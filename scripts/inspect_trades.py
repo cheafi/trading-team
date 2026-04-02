@@ -2,7 +2,9 @@
 """Inspect backtest trade schema"""
 import json, zipfile, glob, numpy as np
 
-zips = sorted(glob.glob('/Users/chantszwai/trading-team/freqtrade/user_data/backtest_results/backtest-result-*.zip'))
+import os
+BASE = os.path.join(os.path.dirname(__file__), '..', 'freqtrade', 'user_data', 'backtest_results')
+zips = sorted(glob.glob(os.path.join(BASE, 'backtest-result-*.zip')))
 print(f"Found {len(zips)} zip files\n")
 
 all_trades = {}

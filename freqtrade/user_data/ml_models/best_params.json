@@ -97,7 +97,7 @@
     "size_adj": 1.0,
     "best_session": "europe",
     "worst_session": "overlap",
-    "direction_bias": "long",
+    "direction_bias": "short",
     "bias_strength": 0.1576,
     "kelly_fraction": 0.02,
     "is_robust": false,

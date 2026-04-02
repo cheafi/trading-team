@@ -107,17 +107,13 @@ class AdaptiveMLStrategy(IStrategy):
         "120": 0.001,
     }
 
-    stoploss = -0.008  # 0.8% SL — optimal sweet spot
-    use_custom_stoploss = False
+    stoploss = -0.025  # Backstop only; real SL in custom_stoploss()
+    use_custom_stoploss = True
     trailing_stop = False
-    # Removed trailing_stop_positive — it interfered
-    # with custom_stoploss Phase 2/3 logic
 
     startup_candle_count = 200
 
     # Internal state - ML models
-    _regime_model = None
-    _param_model = None
     _best_params = None
     _perf_history = None
     _quality_model_data = None  # PRO: quality model
@@ -153,20 +149,6 @@ class AdaptiveMLStrategy(IStrategy):
             return
 
         self._last_model_load = now
-
-        if REGIME_MODEL_PATH.exists():
-            try:
-                with open(REGIME_MODEL_PATH, "rb") as f:
-                    self._regime_model = pickle.load(f)
-            except Exception:
-                self._regime_model = None
-
-        if PARAM_MODEL_PATH.exists():
-            try:
-                with open(PARAM_MODEL_PATH, "rb") as f:
-                    self._param_model = pickle.load(f)
-            except Exception:
-                self._param_model = None
 
         if BEST_PARAMS_PATH.exists():
             try:
@@ -273,8 +255,13 @@ class AdaptiveMLStrategy(IStrategy):
         regimes[mask_down] = 1
 
         # High volatility: ATR_norm > 80th percentile
-        atr_threshold = df["atr_norm"].quantile(0.8)
-        mask_vol = df["atr_norm"] > atr_threshold
+        # Use expanding (causal) quantile to avoid lookahead
+        atr_p80 = (
+            df["atr_norm"]
+            .expanding(min_periods=50)
+            .quantile(0.8)
+        )
+        mask_vol = df["atr_norm"] > atr_p80
         regimes[mask_vol] = 3
 
         return regimes
@@ -295,7 +282,14 @@ class AdaptiveMLStrategy(IStrategy):
         ma = df["momentum_accel"].fillna(0).values
         vt = df["vol_trend"].fillna(0).values
         bw = df["bb_width"].fillna(1).values
-        median_bw = np.nanmedian(bw)
+        # Use expanding (causal) median to avoid lookahead
+        median_bw = (
+            df["bb_width"]
+            .expanding(min_periods=50)
+            .median()
+            .fillna(df["bb_width"].iloc[:50].median())
+            .values
+        )
 
         # Vectorized conditions — no Python loop
         sub[regime == 0] = np.where(
@@ -303,7 +297,7 @@ class AdaptiveMLStrategy(IStrategy):
         sub[regime == 1] = np.where(
             ma[regime == 1] < 0, 2, 3)  # DOWN_STRONG / DOWN_WEAK
         sub[regime == 2] = np.where(
-            bw[regime == 2] < median_bw, 4, 5)  # TIGHT / WIDE
+            bw[regime == 2] < median_bw[regime == 2], 4, 5)  # TIGHT / WIDE
         sub[regime == 3] = np.where(
             vt[regime == 3] > 0, 6, 7)  # EXPANDING / CONTRACTING
 
@@ -811,15 +805,14 @@ class AdaptiveMLStrategy(IStrategy):
                 kelly = params.get("kelly_fraction", 0)
                 regime_c = params.get("c", c)
                 if kelly > 0.02:
-                    # Blend Kelly with regime c
-                    c = kelly * 0.5 + regime_c * 0.5
+                    # Blend Kelly with regime c (conservative)
+                    c = kelly * 0.4 + regime_c * 0.6
                 else:
-                    # Our filtering improves WR from 41%→76%.
-                    # Use regime c × 4 to size up accordingly.
-                    # Our filtering improves WR from 41%→76%.
-                    # Use regime c × 7 to size up. With c=0.11
-                    # this gives c=0.77, ~1230 USDT per trade.
-                    c = regime_c * 7.0
+                    # Weak/zero Kelly = weak edge → use
+                    # regime c as-is (no amplification).
+                    # Sizing up on uncertain edge is the
+                    # single most dangerous bug in a bot.
+                    c = regime_c
 
                 # Apply size_adj from performance feedback
                 size_adj = params.get("size_adj", 1.0)
@@ -902,27 +895,22 @@ class AdaptiveMLStrategy(IStrategy):
         max_losses = params.get(
             "cooldown_after_losses", 5)
 
+        # Discipline: same rules in backtest and live
         if self._consecutive_losses >= max_losses:
-            if not self.dp.runmode.value == 'backtest':
-                return False
-            # In backtest: only block after 10 losses
-            if self._consecutive_losses >= 10:
-                return False
+            return False
 
         # PRO: Daily loss limit
         daily_limit = params.get(
             "daily_loss_limit", 0.02)
         if self._daily_pnl < -daily_limit:
-            if not self.dp.runmode.value == 'backtest':
-                return False
+            return False
 
         # PRO: Equity curve circuit breaker
         if len(self._recent_results) >= 20:
             recent = self._recent_results[-20:]
             if sum(recent) < -0.05:
                 if self._consecutive_losses >= 5:
-                    if not self.dp.runmode.value == 'backtest':
-                        return False
+                    return False
 
         dataframe, _ = self.dp.get_analyzed_dataframe(
             pair, self.timeframe
@@ -961,28 +949,25 @@ class AdaptiveMLStrategy(IStrategy):
         # strategies. Don't hard-block since our filtering
         # creates edge that raw strategies don't have.
 
-        # NEW: Anti-pattern filter — avoid toxic hours/days
-        # learned from past losing trades
+        # Anti-pattern filter — scoped to active regime's
+        # strategy only (not global union of all strategies)
         if self._anti_patterns and hasattr(current_time, "hour"):
             try:
-                all_toxic_hours = set()
-                for ap in self._anti_patterns.values():
-                    if isinstance(ap, dict):
-                        for h in ap.get(
-                                "toxic_hours", []):
-                            all_toxic_hours.add(h)
-                if current_time.hour in all_toxic_hours:
-                    if not self.dp.runmode.value == 'backtest':
+                strategy_name = params.get("strategy", "")
+                # Match strategy key (e.g. "A52Strategy",
+                # "AdaptiveMLStrategy") in anti_patterns
+                ap = None
+                for key, val in self._anti_patterns.items():
+                    if (strategy_name in key
+                            and isinstance(val, dict)):
+                        ap = val
+                        break
+                if ap:
+                    toxic_hours = ap.get("toxic_hours", [])
+                    if current_time.hour in toxic_hours:
                         return False
-
-                all_toxic_days = set()
-                for ap in self._anti_patterns.values():
-                    if isinstance(ap, dict):
-                        for d in ap.get(
-                                "toxic_days", []):
-                            all_toxic_days.add(d)
-                if current_time.weekday() in all_toxic_days:
-                    if not self.dp.runmode.value == 'backtest':
+                    toxic_days = ap.get("toxic_days", [])
+                    if current_time.weekday() in toxic_days:
                         return False
             except Exception:
                 pass
@@ -1014,12 +999,7 @@ class AdaptiveMLStrategy(IStrategy):
                     quality = model.predict_proba(scaled)[0][1]
 
                     if quality < min_quality:
-                        # In backtest, use softer threshold
-                        if self.dp.runmode.value == 'backtest':
-                            if quality < min_quality * 0.6:
-                                return False
-                        else:
-                            return False  # low quality setup
+                        return False  # same threshold everywhere
             except Exception:
                 pass  # fail open — don't block on model error
 
@@ -1032,8 +1012,7 @@ class AdaptiveMLStrategy(IStrategy):
             if regime != prev_regime:
                 ds = abs(last.get("direction_score", 0))
                 if ds < 0.5:  # need moderate signal
-                    if not self.dp.runmode.value == 'backtest':
-                        return False
+                    return False
 
         self._daily_trades += 1
         return True
@@ -1057,31 +1036,31 @@ class AdaptiveMLStrategy(IStrategy):
             except (ValueError, IndexError):
                 pass
 
-        # Progressive stoploss: NO hard SL at open.
-        # Let trades develop, then tighten.
+        params = self._get_regime_params(regime)
+        base_sl = params.get("sl", -0.008)
+        trail_start = params.get("trail_start", 0.005)
+        trail_step = params.get("trail_step", 0.003)
+
         trade_dur = (
             current_time - trade.open_date_utc
         ).total_seconds() / 60
 
-        # Big winner: lock 55% of gains
-        if current_profit > 0.008:
-            return -(current_profit * 0.45)
+        # Phase 3: Big winner — trail to lock gains
+        if current_profit > trail_start:
+            return -(current_profit - trail_step)
 
-        # After 0.4% profit: lock breakeven
-        if current_profit > 0.004:
+        # Phase 2: Breakeven lock after modest gain
+        if current_profit > abs(base_sl) * 0.5:
             return -0.002
 
-        # Time-based tightening: wider initially,
-        # progressively tighter as trade ages.
-        # This replaces hard SL.
-        if trade_dur < 10:
-            return -0.020  # wide: 2%
-        elif trade_dur < 20:
-            return -0.012  # 1.2%
+        # Phase 1: Use regime-calibrated base SL
+        # Tighten gradually as trade ages
+        if trade_dur < 15:
+            return base_sl  # full room
         elif trade_dur < 40:
-            return -0.008  # 0.8%
+            return base_sl * 0.75  # tighter
         else:
-            return -0.005  # tight after 40min
+            return base_sl * 0.60  # tight after 40min
 
     # ─── Dynamic ROI ─────────────────────────────────────
 

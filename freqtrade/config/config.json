@@ -67,7 +67,7 @@
     "verbosity": "error",
     "enable_openapi": true,
     "jwt_secret_key": "changeme-jwt-secret-key-trading-team",
-    "CORS_origins": ["*"],
+    "CORS_origins": ["http://localhost:3000"],
     "username": "freqtrader",
     "password": "SuperSecure123"
   },
@@ -101,7 +101,7 @@
 
   "initial_state": "running",
 
-  "force_entry_enable": true,
+  "force_entry_enable": false,
 
   "telegram": {
     "enabled": false,

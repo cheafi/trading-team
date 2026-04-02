@@ -158,13 +158,16 @@ def score_strategy(trades):
     max_dd = float(np.max(dd)) if len(dd) > 0 else 0.0
 
     if np.std(profits) > 0:
-        sharpe = np.mean(profits) / np.std(profits) * np.sqrt(105120)
+        # Per-trade Sharpe: annualize by sqrt(n) for n trades,
+        # NOT sqrt(105120) which assumes 5-min bar returns.
+        # Trade returns are irregular and variable-duration.
+        sharpe = np.mean(profits) / np.std(profits) * np.sqrt(n)
     else:
         sharpe = 0.0
 
     downside = profits[profits < 0]
     if len(downside) > 0 and np.std(downside) > 0:
-        sortino = np.mean(profits) / np.std(downside) * np.sqrt(105120)
+        sortino = np.mean(profits) / np.std(downside) * np.sqrt(n)
     else:
         sortino = sharpe
 
@@ -1058,7 +1061,7 @@ def compute_rolling_performance(trades, window_trades=200):
         wr = np.mean(window > 0)
         exp = np.mean(window)
         std = np.std(window)
-        sh = (exp / std * np.sqrt(105120)) if std > 0 else 0
+        sh = (exp / std * np.sqrt(window_trades)) if std > 0 else 0
         rolling_wr.append(float(wr))
         rolling_exp.append(float(exp))
         rolling_sharpe.append(float(sh))

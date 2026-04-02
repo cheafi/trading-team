@@ -15,11 +15,11 @@ echo "Timerange: $TIMERANGE"
 echo ""
 
 # Download data first
-echo "📥 Downloading ETH/USDT 5m data..."
+echo "📥 Downloading ETH/USDT 5m + 15m + 1h data..."
 docker compose run --rm freqtrade download-data \
-    --config /freqtrade/config/config.json \
+    --config /freqtrade/config/config_backtest.json \
     --pairs ETH/USDT:USDT \
-    --timeframes 5m 1h \
+    --timeframes 5m 15m 1h \
     --timerange "$TIMERANGE"
 
 echo ""
@@ -30,7 +30,7 @@ for STRATEGY in "${STRATEGIES[@]}"; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     docker compose run --rm freqtrade backtesting \
-        --config /freqtrade/config/config.json \
+        --config /freqtrade/config/config_backtest.json \
         --strategy "$STRATEGY" \
         --strategy-path /freqtrade/user_data/strategies \
         --timerange "$TIMERANGE" \

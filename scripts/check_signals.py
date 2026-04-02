@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-import json, subprocess, sys
+import json, subprocess, sys, os
+
+user = os.environ.get('FREQTRADE_USER', 'freqtrader')
+passwd = os.environ.get('FREQTRADE_PASS', '')
+host = os.environ.get('FREQTRADE_HOST', 'localhost:8080')
 
 result = subprocess.run(
-    ["curl", "-s", "-u", "freqtrader:SuperSecure123",
-     "http://localhost:8080/api/v1/pair_candles?pair=ETH/USDT:USDT&timeframe=5m&limit=1"],
+    ["curl", "-s", "-u", f"{user}:{passwd}",
+     f"http://{host}/api/v1/pair_candles?pair=ETH/USDT:USDT&timeframe=5m&limit=1"],
     capture_output=True, text=True
 )
 d = json.loads(result.stdout)

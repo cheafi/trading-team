@@ -167,7 +167,8 @@ async function runQuantResearcher(agent) {
 async function runBacktester(agent) {
   log.info(`[${agent.id}] Checking backtest metrics...`);
 
-  // Pull strategy performance from the running bot
+  // Pull pair performance from the running bot
+  // Note: /performance returns per-pair stats, not per-strategy
   const performance = await ftApi("/performance");
   const strategies = ["A52Strategy", "OPTStrategy", "A51Strategy", "A31Strategy"];
 
@@ -176,16 +177,14 @@ async function runBacktester(agent) {
     agent: agent.id,
     type: "backtest-review",
     data: {
-      strategies: strategies.map((s) => {
-        const perf = performance?.find((p) => p.pair?.includes(s));
-        return {
-          name: s,
-          status: perf ? "active" : "loaded",
-          profit: perf?.profit || 0,
-        };
-      }),
+      pairPerformance: performance?.slice(0, 10)?.map((p) => ({
+        pair: p.pair,
+        profit: p.profit,
+        count: p.count,
+      })) || [],
+      monitoredStrategies: strategies,
     },
-    summary: `${strategies.length} strategies loaded and monitored`,
+    summary: `${strategies.length} strategies monitored | ${performance?.length || 0} pairs tracked`,
   };
 
   agent.findings.unshift(finding);
@@ -761,8 +760,13 @@ function getDefaultTimerange() {
 }
 
 async function downloadData(pairs, timeframes, timerange) {
-  const pairArg = pairs.join(" ");
-  const tfArg = timeframes.join(" ");
+  // Sanitize inputs to prevent command injection
+  const safePat = /^[a-zA-Z0-9/:_\-. ]+$/;
+  const pairArg = pairs.filter(p => safePat.test(p)).join(" ");
+  const tfArg = timeframes.filter(t => safePat.test(t)).join(" ");
+  if (!safePat.test(timerange) || !pairArg || !tfArg) {
+    throw new Error("Invalid input characters in download params");
+  }
   const cmd = `docker compose run --rm freqtrade download-data --config /freqtrade/config/config.json --pairs ${pairArg} --timeframes ${tfArg} --timerange ${timerange}`;
 
   return new Promise((resolve, reject) => {
@@ -787,9 +791,11 @@ async function runBacktests(strategies, timerange) {
     log.info({ strategy, timerange }, "Running backtest...");
 
     try {
+      // Sanitize strategy name to prevent command injection
+      const safeStrategy = strategy.replace(/[^a-zA-Z0-9_]/g, "");
       const output = await new Promise((resolve, reject) => {
         exec(
-          `docker compose run --rm freqtrade backtesting --config /freqtrade/config/config.json --strategy ${strategy} --strategy-path /freqtrade/user_data/strategies --timerange ${timerange} --timeframe 5m --enable-protections --export trades`,
+          `docker compose run --rm freqtrade backtesting --config /freqtrade/config/config_backtest.json --strategy ${safeStrategy} --strategy-path /freqtrade/user_data/strategies --timerange ${timerange} --timeframe 5m --enable-protections --export trades`,
           { cwd: "/app", timeout: 600_000 },
           (err, stdout, stderr) => {
             if (err) reject(err);
