@@ -1,0 +1,53 @@
+{
+  "trading_mode": "futures",
+  "margin_mode": "isolated",
+  "max_open_trades": 6,
+  "stake_currency": "USDT",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.99,
+  "dry_run": true,
+  "dry_run_wallet": 10000,
+
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "pair_whitelist": [
+      "ETH/USDT:USDT",
+      "SOL/USDT:USDT",
+      "ARB/USDT:USDT",
+      "SUI/USDT:USDT",
+      "APT/USDT:USDT",
+      "WIF/USDT:USDT",
+      "FET/USDT:USDT",
+      "TIA/USDT:USDT",
+      "SEI/USDT:USDT"
+    ],
+    "pair_blacklist": []
+  },
+
+  "pairlists": [
+    { "method": "StaticPairList" }
+  ],
+
+  "entry_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+  "exit_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+
+  "order_types": {
+    "entry": "limit",
+    "exit": "limit",
+    "stoploss": "market",
+    "stoploss_on_exchange": true
+  },
+
+  "timeframe": "5m",
+  "startup_candle_count": 200
+}

@@ -1,0 +1,10 @@
+{
+  "name": "DanDan Trading Team",
+  "short_name": "DanDan",
+  "description": "Multi-agent algo trading dashboard",
+  "icons": [],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0a0e17",
+  "background_color": "#0a0e17"
+}

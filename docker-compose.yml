@@ -1,0 +1,128 @@
+# ============================================================
+# 🏆 Cheafi — Multi-Agent Algo Trading Platform
+# ============================================================
+# Architecture inspired by garrytan/gstack multi-agent approach
+# Uses: Freqtrade (backtest/live) + Next.js Dashboard + Redis
+#
+# Usage:
+#   cp .env.example .env        # fill in your keys
+#   docker compose up -d        # start everything
+#   docker compose logs -f      # tail logs
+#   open http://localhost:3000   # dashboard
+# ============================================================
+
+services:
+
+  # ─── 📊 Freqtrade — Backtesting & Live Trading Engine ──────
+  freqtrade:
+    image: freqtradeorg/freqtrade:stable
+    container_name: freqtrade
+    restart: unless-stopped
+    command: trade --config /freqtrade/config/config.json --strategy AdaptiveMLStrategy --strategy-path /freqtrade/user_data/strategies
+    volumes:
+      - ./freqtrade/user_data:/freqtrade/user_data
+      - ./freqtrade/config:/freqtrade/config
+    ports:
+      - "${FREQTRADE_API_PORT:-8080}:8080"
+    environment:
+      - TZ=${TZ:-Asia/Hong_Kong}
+      - FREQTRADE__EXCHANGE__KEY=${EXCHANGE_KEY:-}
+      - FREQTRADE__EXCHANGE__SECRET=${EXCHANGE_SECRET:-}
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v1/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ─── 🧠 Redis — Shared state for agents & dashboard ────────
+  redis:
+    image: redis:7-alpine
+    container_name: trading-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  # ─── 🖥️ Dashboard — Next.js Trading Team Control Panel ─────
+  dashboard:
+    build: ./dashboard
+    container_name: trading-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    environment:
+      - AGENT_API_HOST=agent-runner
+      - AGENT_API_PORT=3001
+      - TZ=${TZ:-Asia/Hong_Kong}
+    depends_on:
+      redis:
+        condition: service_healthy
+      agent-runner:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # ─── 🤖 Agent Runner — Cron-driven multi-agent orchestrator ─
+  agent-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.agents
+    container_name: trading-agents
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${AGENT_PORT:-3001}:3001"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - FREQTRADE_API=http://freqtrade:8080
+      - FREQTRADE_API_USER=${FREQTRADE_USER:-freqtrader}
+      - FREQTRADE_API_PASSWORD=${FREQTRADE_PASS:-SuperSecure123}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - DISCORD_CHANNEL_NAME=${DISCORD_CHANNEL_NAME:-Trading CC}
+      - AGENT_PORT=3001
+      - TZ=${TZ:-Asia/Hong_Kong}
+    volumes:
+      - ./agents:/app/agents
+      - ./shared:/app/shared
+      - ./freqtrade/user_data:/freqtrade/user_data
+    depends_on:
+      redis:
+        condition: service_healthy
+      freqtrade:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+
+volumes:
+  redis-data:
+    name: trading-redis-data

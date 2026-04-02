@@ -1,0 +1,111 @@
+{
+  "trading_mode": "futures",
+  "margin_mode": "isolated",
+  "max_open_trades": 6,
+  "stake_currency": "USDT",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.99,
+  "fiat_display_currency": "USD",
+  "dry_run": true,
+  "dry_run_wallet": 10000,
+  "cancel_open_orders_on_exit": false,
+
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "ccxt_sync_config": {
+      "enableRateLimit": true
+    },
+    "ccxt_async_config": {
+      "enableRateLimit": true
+    },
+    "pair_whitelist": [
+      "ETH/USDT:USDT"
+    ],
+    "pair_blacklist": [
+      ".*USDC.*",
+      ".*BUSD.*",
+      ".*TUSD.*",
+      ".*FDUSD.*",
+      ".*DAI/.*",
+      ".*(UP|DOWN)/USDT.*",
+      ".*(BULL|BEAR)/USDT.*",
+      ".*1000(SATS|RATS|BONK|PEPE|FLOKI|SHIB)/.*"
+    ]
+  },
+
+  "entry_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+  "exit_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+
+  "order_types": {
+    "entry": "limit",
+    "exit": "limit",
+    "stoploss": "market",
+    "stoploss_on_exchange": true
+  },
+
+  "unfilledtimeout": {
+    "entry": 10,
+    "exit": 10,
+    "exit_timeout_count": 0,
+    "unit": "minutes"
+  },
+
+  "api_server": {
+    "enabled": true,
+    "listen_ip_address": "0.0.0.0",
+    "listen_port": 8080,
+    "verbosity": "error",
+    "enable_openapi": true,
+    "jwt_secret_key": "changeme-jwt-secret-key-trading-team",
+    "CORS_origins": ["*"],
+    "username": "freqtrader",
+    "password": "SuperSecure123"
+  },
+
+  "timeframe": "5m",
+
+  "pairlists": [
+    {
+      "method": "VolumePairList",
+      "number_assets": 15,
+      "sort_key": "quoteVolume",
+      "refresh_period": 1800
+    },
+    {
+      "method": "AgeFilter",
+      "min_days_listed": 30
+    },
+    {
+      "method": "SpreadFilter",
+      "max_spread_ratio": 0.005
+    }
+  ],
+
+  "startup_candle_count": 200,
+
+  "internals": {
+    "process_throttle_secs": 5
+  },
+
+  "bot_name": "Cheafi-Trading-Bot",
+
+  "initial_state": "running",
+
+  "force_entry_enable": true,
+
+  "telegram": {
+    "enabled": false,
+    "token": "placeholder",
+    "chat_id": "0"
+  }
+}

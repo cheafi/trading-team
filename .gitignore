@@ -1,0 +1,23 @@
+.env
+node_modules/
+freqtrade/user_data/data/
+freqtrade/user_data/logs/
+freqtrade/user_data/backtest_results/
+.next/
+
+# ML model binaries
+freqtrade/user_data/ml_models/*.pkl
+
+# OS files
+.DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+dashboard/node_modules/
+agents/node_modules/
+dashboard/.next/

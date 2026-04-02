@@ -1,0 +1,42 @@
+{
+  "A52Strategy": {
+    "latest_wr": 0.455,
+    "latest_exp": -0.000878,
+    "wr_trend": 0.035,
+    "exp_trend": 0.000842,
+    "perf_trend": "stable",
+    "n_windows": 12730
+  },
+  "OPTStrategy": {
+    "latest_wr": 0.365,
+    "latest_exp": -0.000716,
+    "wr_trend": -0.065,
+    "exp_trend": -0.000932,
+    "perf_trend": "stable",
+    "n_windows": 13962
+  },
+  "A51Strategy": {
+    "latest_wr": 0.41,
+    "latest_exp": -0.000639,
+    "wr_trend": 0.05,
+    "exp_trend": 5.5e-05,
+    "perf_trend": "stable",
+    "n_windows": 3513
+  },
+  "A31Strategy": {
+    "latest_wr": 0.245,
+    "latest_exp": -0.001457,
+    "wr_trend": -0.1,
+    "exp_trend": -0.000813,
+    "perf_trend": "stable",
+    "n_windows": 4123
+  },
+  "AdaptiveMLStrategy": {
+    "latest_wr": 0.655,
+    "latest_exp": 0.000945,
+    "wr_trend": 0.195,
+    "exp_trend": 0.002282,
+    "perf_trend": "stable",
+    "n_windows": 37902
+  }
+}

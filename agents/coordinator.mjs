@@ -1,0 +1,921 @@
+/**
+ * Agent Coordinator — Orchestrates the 6-agent trading team
+ *
+ * Architecture inspired by gstack's multi-skill pattern:
+ * - Each agent runs on a schedule or event trigger
+ * - Results are published to Redis for dashboard consumption
+ * - Agents can dispatch sub-tasks to each other
+ */
+import { createServer } from "node:http";
+import { execSync, exec } from "node:child_process";
+import Redis from "ioredis";
+import { CronJob } from "cron";
+import pino from "pino";
+import discord from "./discord-bot.mjs";
+
+const log = pino({
+  level: process.env.LOG_LEVEL || "info",
+  transport:
+    process.env.NODE_ENV !== "production"
+      ? { target: "pino-pretty" }
+      : undefined,
+});
+
+// ─── Config ────────────────────────────────────────────────────
+const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
+const FREQTRADE_API = process.env.FREQTRADE_API || "http://freqtrade:8080";
+const FT_USER = process.env.FREQTRADE_API_USER || "freqtrader";
+const FT_PASS = process.env.FREQTRADE_API_PASSWORD || "SuperSecure123";
+const PORT = parseInt(process.env.AGENT_PORT || "3001", 10);
+const TZ = process.env.TZ || "Asia/Hong_Kong";
+
+// ─── Redis ─────────────────────────────────────────────────────
+const redis = new Redis(REDIS_URL, {
+  retryStrategy: (times) => Math.min(times * 200, 5000),
+  maxRetriesPerRequest: 3,
+});
+
+redis.on("connect", () => log.info("Redis connected"));
+redis.on("error", (err) => log.error({ err }, "Redis error"));
+
+// ─── Freqtrade API Helper ──────────────────────────────────────
+async function ftApi(endpoint, method = "GET", body = null) {
+  const url = `${FREQTRADE_API}/api/v1${endpoint}`;
+  const headers = {
+    Authorization:
+      "Basic " + Buffer.from(`${FT_USER}:${FT_PASS}`).toString("base64"),
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      log.warn({ status: res.status, endpoint }, "Freqtrade API error");
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    log.error({ err, endpoint }, "Freqtrade API call failed");
+    return null;
+  }
+}
+
+// ─── Agent Definitions ─────────────────────────────────────────
+const agents = [
+  {
+    id: "quant-researcher",
+    name: "量化研究員",
+    emoji: "🔬",
+    schedule: "*/15 * * * *", // every 15 min
+    status: "idle",
+    lastRun: null,
+    findings: [],
+  },
+  {
+    id: "backtester",
+    name: "回測工程師",
+    emoji: "📊",
+    schedule: "0 */2 * * *", // every 2 hours
+    status: "idle",
+    lastRun: null,
+    findings: [],
+  },
+  {
+    id: "risk-manager",
+    name: "風控官 CRO",
+    emoji: "🛡️",
+    schedule: "*/5 * * * *", // every 5 min
+    status: "idle",
+    lastRun: null,
+    findings: [],
+  },
+  {
+    id: "signal-engineer",
+    name: "信號工程師",
+    emoji: "📡",
+    schedule: "*/5 * * * *", // every 5 min
+    status: "idle",
+    lastRun: null,
+    findings: [],
+  },
+  {
+    id: "market-analyst",
+    name: "市場分析師",
+    emoji: "🌍",
+    schedule: "*/10 * * * *", // every 10 min
+    status: "idle",
+    lastRun: null,
+    findings: [],
+  },
+  {
+    id: "security-auditor",
+    name: "安全審計官",
+    emoji: "🔒",
+    schedule: "0 */6 * * *", // every 6 hours
+    status: "idle",
+    lastRun: null,
+    findings: [],
+  },
+  {
+    id: "ml-optimizer",
+    name: "ML 優化師",
+    emoji: "🧠",
+    schedule: "0 */2 * * *", // every 2 hours — retrain from latest data
+    status: "idle",
+    lastRun: null,
+    findings: [],
+  },
+];
+
+// ─── Agent Task Runners ────────────────────────────────────────
+
+async function runQuantResearcher(agent) {
+  log.info(`[${agent.id}] Analyzing market structure...`);
+
+  const profit = await ftApi("/profit");
+  const performance = await ftApi("/performance");
+  const status = await ftApi("/status");
+
+  const finding = {
+    timestamp: new Date().toISOString(),
+    agent: agent.id,
+    type: "analysis",
+    data: {
+      totalProfit: profit?.profit_all_coin || 0,
+      profitPercent: profit?.profit_all_perc || 0,
+      tradeCount: profit?.trade_count || 0,
+      topStrategies:
+        performance?.slice(0, 5).map((p) => ({
+          pair: p.pair,
+          profit: p.profit,
+          count: p.count,
+        })) || [],
+      openTrades: status?.length || 0,
+    },
+    summary: `P&L: ${profit?.profit_all_coin?.toFixed(2) || "N/A"} USDT | Open: ${status?.length || 0} trades`,
+  };
+
+  agent.findings.unshift(finding);
+  agent.findings = agent.findings.slice(0, 50);
+  return finding;
+}
+
+async function runBacktester(agent) {
+  log.info(`[${agent.id}] Checking backtest metrics...`);
+
+  // Pull strategy performance from the running bot
+  const performance = await ftApi("/performance");
+  const strategies = ["A52Strategy", "OPTStrategy", "A51Strategy", "A31Strategy"];
+
+  const finding = {
+    timestamp: new Date().toISOString(),
+    agent: agent.id,
+    type: "backtest-review",
+    data: {
+      strategies: strategies.map((s) => {
+        const perf = performance?.find((p) => p.pair?.includes(s));
+        return {
+          name: s,
+          status: perf ? "active" : "loaded",
+          profit: perf?.profit || 0,
+        };
+      }),
+    },
+    summary: `${strategies.length} strategies loaded and monitored`,
+  };
+
+  agent.findings.unshift(finding);
+  agent.findings = agent.findings.slice(0, 50);
+  return finding;
+}
+
+async function runRiskManager(agent) {
+  log.info(`[${agent.id}] Evaluating risk exposure...`);
+
+  const balance = await ftApi("/balance");
+  const status = await ftApi("/status");
+  const profit = await ftApi("/profit");
+
+  const totalValue = balance?.total || 0;
+  const openTrades = status?.length || 0;
+  const drawdown = profit?.max_drawdown || 0;
+  const drawdownPct = profit?.max_drawdown_perc || 0;
+
+  const alerts = [];
+  if (drawdownPct > 15) alerts.push(`⚠️ DD ${drawdownPct.toFixed(1)}% > 15% threshold`);
+  if (openTrades > 5) alerts.push(`⚠️ ${openTrades} open positions (max recommended: 5)`);
+
+  const riskLevel =
+    drawdownPct > 20 ? "CRITICAL" :
+    drawdownPct > 15 ? "HIGH" :
+    drawdownPct > 10 ? "MEDIUM" : "LOW";
+
+  const finding = {
+    timestamp: new Date().toISOString(),
+    agent: agent.id,
+    type: "risk-assessment",
+    data: {
+      totalValue,
+      openTrades,
+      drawdown,
+      drawdownPct,
+      riskLevel,
+      alerts,
+    },
+    summary: `Risk: ${riskLevel} | DD: ${drawdownPct?.toFixed(1) || 0}% | Open: ${openTrades}`,
+  };
+
+  agent.findings.unshift(finding);
+  agent.findings = agent.findings.slice(0, 50);
+
+  // Publish risk alerts to Redis for real-time dashboard
+  if (alerts.length > 0) {
+    await redis.publish("trading:alerts", JSON.stringify({ alerts, riskLevel }));
+  }
+
+  // Send risk alert to Discord if HIGH or CRITICAL
+  if (riskLevel === "HIGH" || riskLevel === "CRITICAL") {
+    discord.sendRiskAlert({ riskLevel, drawdownPct: drawdownPct, alerts }).catch(() => {});
+  }
+
+  return finding;
+}
+
+async function runSignalEngineer(agent) {
+  log.info(`[${agent.id}] Processing signals...`);
+
+  const status = await ftApi("/status");
+  const whitelist = await ftApi("/whitelist");
+
+  const finding = {
+    timestamp: new Date().toISOString(),
+    agent: agent.id,
+    type: "signal-report",
+    data: {
+      activeSignals: status?.map((t) => ({
+        pair: t.pair,
+        direction: t.is_short ? "SHORT" : "LONG",
+        profit: t.profit_pct,
+        duration: t.trade_duration,
+        strategy: t.strategy,
+        entryTag: t.enter_tag,
+      })) || [],
+      watchlist: whitelist?.whitelist || [],
+    },
+    summary: `${status?.length || 0} active signals | Watching ${whitelist?.whitelist?.length || 0} pairs`,
+  };
+
+  agent.findings.unshift(finding);
+  agent.findings = agent.findings.slice(0, 50);
+  return finding;
+}
+
+async function runMarketAnalyst(agent) {
+  log.info(`[${agent.id}] Scanning market conditions...`);
+
+  const status = await ftApi("/status");
+  const pair = "ETH/USDT:USDT";
+
+  // Aggregate market signals from open trades
+  const longTrades = status?.filter((t) => !t.is_short)?.length || 0;
+  const shortTrades = status?.filter((t) => t.is_short)?.length || 0;
+
+  const sentiment =
+    longTrades > shortTrades ? "BULLISH" :
+    shortTrades > longTrades ? "BEARISH" : "NEUTRAL";
+
+  const finding = {
+    timestamp: new Date().toISOString(),
+    agent: agent.id,
+    type: "market-scan",
+    data: {
+      pair,
+      sentiment,
+      longTrades,
+      shortTrades,
+      timestamp: Date.now(),
+    },
+    summary: `${pair} sentiment: ${sentiment} (L:${longTrades} S:${shortTrades})`,
+  };
+
+  agent.findings.unshift(finding);
+  agent.findings = agent.findings.slice(0, 50);
+  return finding;
+}
+
+async function runSecurityAuditor(agent) {
+  log.info(`[${agent.id}] Running security checks...`);
+
+  const version = await ftApi("/version");
+  const health = await ftApi("/health");
+  const locks = await ftApi("/locks");
+
+  const issues = [];
+  if (!health) issues.push("Freqtrade health check failed");
+  if (locks?.lock_count > 0)
+    issues.push(`${locks.lock_count} pair locks active`);
+
+  const finding = {
+    timestamp: new Date().toISOString(),
+    agent: agent.id,
+    type: "security-audit",
+    data: {
+      freqtradeVersion: version?.version || "unknown",
+      apiHealth: !!health,
+      pairLocks: locks?.lock_count || 0,
+      issues,
+    },
+    summary: `FT ${version?.version || "?"} | Issues: ${issues.length}`,
+  };
+
+  agent.findings.unshift(finding);
+  agent.findings = agent.findings.slice(0, 50);
+  return finding;
+}
+
+async function runMLOptimizer(agent) {
+  log.info(`[${agent.id}] Running ML optimization cycle...`);
+
+  // 1. Get current performance to evaluate if retraining is needed
+  const profit = await ftApi("/profit");
+  const performance = await ftApi("/performance");
+
+  const winRate = profit?.trade_count > 0
+    ? ((profit?.winning_trades || 0) / profit.trade_count)
+    : 0;
+  const maxDD = profit?.max_drawdown_perc || 0;
+  const totalProfit = profit?.profit_all_coin || 0;
+
+  // 2. Read current ML model params (if they exist)
+  let currentParams = null;
+  try {
+    const fs = await import("node:fs/promises");
+    const paramsPath = "/freqtrade/user_data/ml_models/best_params.json";
+    const raw = await fs.readFile(paramsPath, "utf8");
+    currentParams = JSON.parse(raw);
+  } catch {
+    currentParams = null;
+  }
+
+  // 3. Read training log for improvement tracking
+  let trainingLog = [];
+  try {
+    const fs = await import("node:fs/promises");
+    const logPath = "/freqtrade/user_data/ml_models/training_log.json";
+    const raw = await fs.readFile(logPath, "utf8");
+    trainingLog = JSON.parse(raw);
+  } catch {
+    trainingLog = [];
+  }
+
+  // 4. Calculate improvement trend
+  let improvementTrend = "stable";
+  if (trainingLog.length >= 2) {
+    const recent = trainingLog.slice(-5);
+    const scores = recent.map(entry => {
+      const strats = Object.values(entry.strategy_scores || {});
+      return strats.reduce((sum, s) => sum + (s.score || 0), 0) / (strats.length || 1);
+    });
+    const firstHalf = scores.slice(0, Math.floor(scores.length / 2));
+    const secondHalf = scores.slice(Math.floor(scores.length / 2));
+    const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / (firstHalf.length || 1);
+    const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / (secondHalf.length || 1);
+
+    if (avgSecond > avgFirst * 1.05) improvementTrend = "improving";
+    else if (avgSecond < avgFirst * 0.95) improvementTrend = "degrading";
+  }
+
+  // 5. Determine current regime from model params
+  let activeRegime = "unknown";
+  let activeStrategy = "A52";
+  if (currentParams) {
+    // Find which regime has highest confidence based on recent params
+    const regimeNames = { "0": "TRENDING_UP", "1": "TRENDING_DOWN", "2": "RANGING", "3": "VOLATILE" };
+    for (const [rid, params] of Object.entries(currentParams)) {
+      if (params.source_score && parseFloat(params.source_score) > 0.5) {
+        activeRegime = regimeNames[rid] || `Regime-${rid}`;
+        activeStrategy = params.strategy || "A52";
+        break;
+      }
+    }
+  }
+
+  const finding = {
+    timestamp: new Date().toISOString(),
+    agent: agent.id,
+    type: "ml-optimization",
+    data: {
+      winRate: parseFloat(winRate.toFixed(4)),
+      maxDD: parseFloat(maxDD.toFixed(2)),
+      totalProfit: parseFloat((totalProfit || 0).toFixed(2)),
+      currentParams,
+      activeRegime,
+      activeStrategy,
+      improvementTrend,
+      trainingRuns: trainingLog.length,
+      strategies: performance?.slice(0, 5).map(p => ({
+        pair: p.pair,
+        profit: p.profit,
+        count: p.count,
+      })) || [],
+    },
+    summary: `ML: regime=${activeRegime} strategy=${activeStrategy} WR=${(winRate * 100).toFixed(1)}% trend=${improvementTrend}`,
+  };
+
+  // 6. Publish ML state to Redis for dashboard
+  await redis.set("trading:ml:state", JSON.stringify({
+    regime: activeRegime,
+    strategy: activeStrategy,
+    winRate,
+    maxDD,
+    improvementTrend,
+    params: currentParams,
+    lastTrained: trainingLog.length > 0 ? trainingLog[trainingLog.length - 1].timestamp : null,
+    updatedAt: new Date().toISOString(),
+  }));
+
+  // 7. Notify Discord about ML state
+  discord.sendMLTrainingUpdate({
+    summary: finding.summary,
+    regime: activeRegime,
+    strategy: activeStrategy,
+    trend: improvementTrend,
+  }).catch(() => {});
+
+  agent.findings.unshift(finding);
+  agent.findings = agent.findings.slice(0, 50);
+  return finding;
+}
+
+const taskRunners = {
+  "quant-researcher": runQuantResearcher,
+  backtester: runBacktester,
+  "risk-manager": runRiskManager,
+  "signal-engineer": runSignalEngineer,
+  "market-analyst": runMarketAnalyst,
+  "security-auditor": runSecurityAuditor,
+  "ml-optimizer": runMLOptimizer,
+};
+
+// ─── Execute Agent Task ────────────────────────────────────────
+async function executeAgent(agent) {
+  const runner = taskRunners[agent.id];
+  if (!runner) return;
+
+  agent.status = "running";
+  const startTime = Date.now();
+
+  try {
+    const finding = await runner(agent);
+
+    agent.status = "idle";
+    agent.lastRun = new Date().toISOString();
+
+    // Store state in Redis for dashboard
+    await redis.hset(
+      "trading:agents",
+      agent.id,
+      JSON.stringify({
+        ...agent,
+        lastDuration: Date.now() - startTime,
+      })
+    );
+
+    // Store latest finding
+    if (finding) {
+      await redis.lpush(
+        `trading:findings:${agent.id}`,
+        JSON.stringify(finding)
+      );
+      await redis.ltrim(`trading:findings:${agent.id}`, 0, 99);
+
+      // Also push to global findings stream
+      await redis.lpush("trading:findings:all", JSON.stringify(finding));
+      await redis.ltrim("trading:findings:all", 0, 499);
+
+      // Send important findings to Discord
+      const importantTypes = ["risk-assessment", "signal-report", "security-audit", "ml-optimization"];
+      if (importantTypes.includes(finding.type)) {
+        discord.sendFinding({ ...finding, emoji: agent.emoji }).catch(() => {});
+      }
+    }
+
+    log.info(
+      { agent: agent.id, duration: Date.now() - startTime },
+      "Agent completed"
+    );
+  } catch (err) {
+    agent.status = "error";
+    log.error({ err, agent: agent.id }, "Agent execution failed");
+
+    await redis.hset(
+      "trading:agents",
+      agent.id,
+      JSON.stringify({
+        ...agent,
+        error: err.message,
+      })
+    );
+  }
+}
+
+// ─── Cron Scheduling ───────────────────────────────────────────
+const jobs = [];
+
+function startScheduler() {
+  for (const agent of agents) {
+    const job = new CronJob(
+      agent.schedule,
+      () => executeAgent(agent),
+      null,
+      true,
+      TZ
+    );
+    jobs.push(job);
+    log.info(
+      { agent: agent.id, schedule: agent.schedule },
+      "Scheduled agent"
+    );
+  }
+}
+
+// ─── HTTP API (for dashboard) ──────────────────────────────────
+const server = createServer(async (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  try {
+    // Health check
+    if (url.pathname === "/health") {
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true, agents: agents.length }));
+      return;
+    }
+
+    // Get all agents status
+    if (url.pathname === "/api/agents") {
+      res.writeHead(200);
+      res.end(
+        JSON.stringify(
+          agents.map((a) => ({
+            id: a.id,
+            name: a.name,
+            emoji: a.emoji,
+            status: a.status,
+            lastRun: a.lastRun,
+            findingsCount: a.findings.length,
+            latestFinding: a.findings[0] || null,
+          }))
+        )
+      );
+      return;
+    }
+
+    // Get specific agent findings
+    if (url.pathname.startsWith("/api/agents/") && url.pathname.endsWith("/findings")) {
+      const agentId = url.pathname.split("/")[3];
+      const agent = agents.find((a) => a.id === agentId);
+      if (!agent) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: "Agent not found" }));
+        return;
+      }
+      const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+      res.writeHead(200);
+      res.end(JSON.stringify(agent.findings.slice(0, limit)));
+      return;
+    }
+
+    // Get all findings (global stream)
+    if (url.pathname === "/api/findings") {
+      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+      const findings = await redis.lrange("trading:findings:all", 0, limit - 1);
+      res.writeHead(200);
+      res.end(JSON.stringify(findings.map((f) => JSON.parse(f))));
+      return;
+    }
+
+    // Get strategy rankings
+    if (url.pathname === "/api/strategies") {
+      const performance = await ftApi("/performance");
+      const profit = await ftApi("/profit");
+      res.writeHead(200);
+      res.end(
+        JSON.stringify({
+          performance: performance || [],
+          profit: profit || {},
+        })
+      );
+      return;
+    }
+
+    // Trigger agent manually
+    if (url.pathname === "/api/run" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const { agentId } = JSON.parse(body);
+      const agent = agents.find((a) => a.id === agentId);
+      if (!agent) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: "Agent not found" }));
+        return;
+      }
+      executeAgent(agent); // fire and forget
+      res.writeHead(202);
+      res.end(JSON.stringify({ status: "triggered", agent: agentId }));
+      return;
+    }
+
+    // Freqtrade proxy
+    if (url.pathname.startsWith("/api/ft/")) {
+      const ftPath = url.pathname.replace("/api/ft", "");
+      const data = await ftApi(ftPath);
+      res.writeHead(data ? 200 : 502);
+      res.end(JSON.stringify(data || { error: "Freqtrade unavailable" }));
+      return;
+    }
+
+    // ML state endpoint
+    if (url.pathname === "/api/ml/state") {
+      const mlState = await redis.get("trading:ml:state");
+      res.writeHead(200);
+      res.end(mlState || JSON.stringify({ regime: "unknown", strategy: "A52", params: null }));
+      return;
+    }
+
+    // ML training log
+    if (url.pathname === "/api/ml/history") {
+      try {
+        const fs = await import("node:fs/promises");
+        const logPath = "/freqtrade/user_data/ml_models/training_log.json";
+        const raw = await fs.readFile(logPath, "utf8");
+        res.writeHead(200);
+        res.end(raw);
+      } catch {
+        res.writeHead(200);
+        res.end(JSON.stringify([]));
+      }
+      return;
+    }
+
+    // Trigger ML training manually
+    if (url.pathname === "/api/ml/train" && req.method === "POST") {
+      const mlAgent = agents.find(a => a.id === "ml-optimizer");
+      if (mlAgent) executeAgent(mlAgent);
+      res.writeHead(202);
+      res.end(JSON.stringify({ status: "ml-training-triggered" }));
+      return;
+    }
+
+    // ─── Backtest API ────────────────────────────────────────
+    // Run backtest
+    if (url.pathname === "/api/backtest/run" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const { strategy, timerange } = JSON.parse(body || "{}");
+      const tr = timerange || getDefaultTimerange();
+      const strats = (!strategy || strategy === "all")
+        ? ["A52Strategy", "OPTStrategy", "A51Strategy", "A31Strategy", "AdaptiveMLStrategy"]
+        : [strategy];
+
+      log.info({ strategies: strats, timerange: tr }, "Backtest triggered");
+      discord.sendAlert("info", `🏃 Backtest started: ${strats.join(", ")} | Range: ${tr}`);
+
+      // Run backtests in background
+      runBacktests(strats, tr).catch(err => {
+        log.error({ err }, "Backtest pipeline failed");
+        discord.sendAlert("critical", `❌ Backtest failed: ${err.message}`);
+      });
+
+      res.writeHead(202);
+      res.end(JSON.stringify({ status: "backtest-started", strategies: strats, timerange: tr }));
+      return;
+    }
+
+    // Get backtest results
+    if (url.pathname === "/api/backtest/results") {
+      const results = await getBacktestResults();
+      res.writeHead(200);
+      res.end(JSON.stringify(results));
+      return;
+    }
+
+    // Download historical data
+    if (url.pathname === "/api/data/download" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const { pairs, timeframes, timerange } = JSON.parse(body || "{}");
+      const tr = timerange || getDefaultTimerange();
+      const pairList = pairs || ["ETH/USDT:USDT"];
+      const tfList = timeframes || ["5m", "15m", "1h"];
+
+      log.info({ pairs: pairList, timeframes: tfList, timerange: tr }, "Data download triggered");
+      discord.sendAlert("info", `📥 Downloading data: ${pairList.join(", ")} | ${tfList.join(", ")} | ${tr}`);
+
+      downloadData(pairList, tfList, tr).catch(err => {
+        log.error({ err }, "Data download failed");
+      });
+
+      res.writeHead(202);
+      res.end(JSON.stringify({ status: "download-started", pairs: pairList, timeframes: tfList, timerange: tr }));
+      return;
+    }
+
+    // Discord status
+    if (url.pathname === "/api/discord/status") {
+      res.writeHead(200);
+      res.end(JSON.stringify(discord.getStatus()));
+      return;
+    }
+
+    res.writeHead(404);
+    res.end(JSON.stringify({ error: "Not found" }));
+  } catch (err) {
+    log.error({ err }, "API error");
+    res.writeHead(500);
+    res.end(JSON.stringify({ error: err.message }));
+  }
+});
+
+// ─── Backtest Helpers ──────────────────────────────────────────
+function getDefaultTimerange() {
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - 6);
+  const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
+  return `${fmt(start)}-${fmt(end)}`;
+}
+
+async function downloadData(pairs, timeframes, timerange) {
+  const pairArg = pairs.join(" ");
+  const tfArg = timeframes.join(" ");
+  const cmd = `docker compose run --rm freqtrade download-data --config /freqtrade/config/config.json --pairs ${pairArg} --timeframes ${tfArg} --timerange ${timerange}`;
+
+  return new Promise((resolve, reject) => {
+    log.info({ cmd }, "Downloading data...");
+    exec(cmd, { cwd: "/app", timeout: 600_000 }, (err, stdout, stderr) => {
+      if (err) {
+        log.error({ err, stderr }, "Data download failed");
+        reject(err);
+        return;
+      }
+      log.info("Data download complete");
+      discord.sendAlert("success", `✅ Data download complete: ${pairs.join(", ")}`);
+      resolve(stdout);
+    });
+  });
+}
+
+async function runBacktests(strategies, timerange) {
+  const results = [];
+
+  for (const strategy of strategies) {
+    log.info({ strategy, timerange }, "Running backtest...");
+
+    try {
+      const output = await new Promise((resolve, reject) => {
+        exec(
+          `docker compose run --rm freqtrade backtesting --config /freqtrade/config/config.json --strategy ${strategy} --strategy-path /freqtrade/user_data/strategies --timerange ${timerange} --timeframe 5m --enable-protections --export trades`,
+          { cwd: "/app", timeout: 600_000 },
+          (err, stdout, stderr) => {
+            if (err) reject(err);
+            else resolve(stdout + stderr);
+          }
+        );
+      });
+
+      // Parse backtest output
+      const result = parseBacktestOutput(output, strategy, timerange);
+      results.push(result);
+
+      // Store in Redis
+      await redis.lpush("trading:backtest:results", JSON.stringify(result));
+      await redis.ltrim("trading:backtest:results", 0, 99);
+
+      // Notify Discord
+      await discord.sendBacktestResult(result);
+
+      log.info({ strategy, profit: result.profit }, "Backtest complete");
+    } catch (err) {
+      log.error({ err, strategy }, "Backtest failed");
+      results.push({
+        strategy,
+        timerange,
+        error: err.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // Summary to Discord
+  const totalProfit = results.filter(r => r.profit).reduce((s, r) => s + (r.profit || 0), 0);
+  await discord.sendAlert(
+    totalProfit >= 0 ? "success" : "warning",
+    `🏁 Backtest suite complete!\n${results.map(r => `• **${r.strategy}**: ${r.profit?.toFixed(2) || "ERROR"}% profit, ${r.totalTrades || 0} trades`).join("\n")}`
+  );
+
+  return results;
+}
+
+function parseBacktestOutput(output, strategy, timerange) {
+  const lines = output.split("\n");
+  let profit = 0, winRate = 0, maxDrawdown = 0, totalTrades = 0, sharpe = 0;
+
+  for (const line of lines) {
+    const profitMatch = line.match(/Total profit\s+[\d.]+\s+.*?([\-\d.]+)\s*%/);
+    if (profitMatch) profit = parseFloat(profitMatch[1]);
+
+    const winMatch = line.match(/Win.*?([\d.]+)\s*%/);
+    if (winMatch) winRate = parseFloat(winMatch[1]);
+
+    const ddMatch = line.match(/Max.*?[Dd]rawdown.*?([\d.]+)\s*%/);
+    if (ddMatch) maxDrawdown = parseFloat(ddMatch[1]);
+
+    const tradeMatch = line.match(/Total.*?trades.*?(\d+)/);
+    if (tradeMatch) totalTrades = parseInt(tradeMatch[1]);
+
+    const sharpeMatch = line.match(/Sharpe.*?([\-\d.]+)/);
+    if (sharpeMatch) sharpe = parseFloat(sharpeMatch[1]);
+  }
+
+  return {
+    strategy,
+    timerange,
+    profit,
+    winRate,
+    maxDrawdown,
+    totalTrades,
+    sharpe,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function getBacktestResults() {
+  try {
+    const raw = await redis.lrange("trading:backtest:results", 0, 49);
+    return raw.map((r) => JSON.parse(r));
+  } catch {
+    return [];
+  }
+}
+
+// ─── Startup ───────────────────────────────────────────────────
+async function main() {
+  log.info("🚀 Cheafi Trading Team Agent Coordinator starting...");
+  log.info(`📡 Freqtrade API: ${FREQTRADE_API}`);
+  log.info(`🗄️  Redis: ${REDIS_URL}`);
+
+  // Wait for Redis
+  await redis.ping();
+  log.info("✅ Redis connected");
+
+  // Initialize Discord bot
+  const discordOk = await discord.initDiscord();
+  const discordStatus = discord.getStatus();
+  log.info(`Discord status: ${JSON.stringify(discordStatus)}`);
+
+  // Store initial agent state
+  for (const agent of agents) {
+    await redis.hset(
+      "trading:agents",
+      agent.id,
+      JSON.stringify(agent)
+    );
+  }
+
+  // Start scheduler
+  startScheduler();
+  log.info(`⏰ ${jobs.length} agent schedules active`);
+
+  // Run all agents once on startup (after 10s delay for Freqtrade)
+  setTimeout(async () => {
+    log.info("🏁 Running initial agent sweep...");
+    for (const agent of agents) {
+      await executeAgent(agent);
+    }
+  }, 10_000);
+
+  // Start HTTP server
+  server.listen(PORT, "0.0.0.0", () => {
+    log.info(`🌐 Agent API listening on port ${PORT}`);
+  });
+}
+
+main().catch((err) => {
+  log.fatal({ err }, "Fatal startup error");
+  process.exit(1);
+});

@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+*.md
+.env
+.env.*
+!.env.example
+freqtrade/user_data/data
+freqtrade/user_data/logs
+freqtrade/user_data/backtest_results
+dashboard/node_modules
+dashboard/.next

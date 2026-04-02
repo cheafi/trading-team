@@ -1,0 +1,29 @@
+{
+  "round_trip_fee": 0.001,
+  "min_edge_multiplier": 2.0,
+  "A52Strategy": {
+    "cooldown": 5,
+    "daily_limit": 0.0051,
+    "max_consec_losses": 27
+  },
+  "OPTStrategy": {
+    "cooldown": 5,
+    "daily_limit": 0.0079,
+    "max_consec_losses": 40
+  },
+  "A51Strategy": {
+    "cooldown": 5,
+    "daily_limit": 0.0011,
+    "max_consec_losses": 22
+  },
+  "A31Strategy": {
+    "cooldown": 5,
+    "daily_limit": 0.0021,
+    "max_consec_losses": 32
+  },
+  "AdaptiveMLStrategy": {
+    "cooldown": 5,
+    "daily_limit": 0.006,
+    "max_consec_losses": 119
+  }
+}
