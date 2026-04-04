@@ -54,11 +54,13 @@ mkdir -p "$MODEL_DIR"
 echo "✅ Prerequisites OK"
 echo ""
 
-# ─── Step 2: Install Python deps if missing ────────────────
-echo "📦 Step 2/4: Ensuring Python dependencies..."
+# ─── Step 2: Verify Python deps (baked into Docker image) ──
+echo "📦 Step 2/4: Checking Python dependencies..."
 python3 -c "import sklearn; import numpy" 2>/dev/null || {
-    echo "  Installing scikit-learn + numpy..."
-    pip3 install --quiet --no-cache-dir --break-system-packages scikit-learn numpy 2>&1 | tail -3
+    echo "❌ scikit-learn or numpy not found."
+    echo "  These should be baked into Dockerfile.agents."
+    echo "  Rebuild: docker compose build agent-runner"
+    exit 1
 }
 echo "✅ Python deps ready"
 echo ""

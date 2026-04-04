@@ -561,188 +561,98 @@ class AdaptiveMLStrategy(IStrategy):
     def populate_entry_trend(
         self, dataframe: DataFrame, metadata: dict
     ) -> DataFrame:
-        for regime_id in [0, 1, 2, 3]:
-            params = self._get_regime_params(regime_id)
-            strategy = params.get("strategy", "A52")
-            entry_adj = params.get("entry_adj", 1.0)
-            direction_bias = params.get("direction_bias", "neutral")
-            mask = dataframe["regime"] == regime_id
+        # ── Only R2 (RANGING) shorts are proven profitable ──
+        # R0/R1/R3 all produce more SL losses than ROI wins.
+        # Skip computing entry conditions for disabled regimes
+        # to save ~120 lines of wasted computation per candle.
 
-            # ── Regime-adaptive thresholds ──
-            # Balanced: not too loose (4700 trades)
-            # not too tight (15 trades)
-            if regime_id in (0, 1):  # trending
-                dir_thresh = 0.40 * min(entry_adj, 1.10)
-            elif regime_id == 3:  # volatile — SKIP
-                dir_thresh = 0.60 * min(entry_adj, 1.10)
-            else:  # ranging
-                dir_thresh = 0.25 * min(entry_adj, 1.10)
+        regime_id = 2  # RANGING — the only active regime
+        params = self._get_regime_params(regime_id)
+        strategy = params.get("strategy", "A52")
+        entry_adj = params.get("entry_adj", 1.0)
+        direction_bias = params.get(
+            "direction_bias", "neutral"
+        )
+        mask = dataframe["regime"] == regime_id
 
-            # Volume: moderate confirmation
-            if regime_id in (0, 1):
-                vol_mult = 1.2 * min(entry_adj, 1.10)
-            else:
-                vol_mult = 1.0 * min(entry_adj, 1.10)
+        # Ranging regime thresholds
+        dir_thresh = 0.25 * min(entry_adj, 1.10)
+        vol_mult = 1.0 * min(entry_adj, 1.10)
 
-            # Multi-TF: 2-of-3 for trending, 1-of-3 ranging
-            if regime_id in (0, 1):  # trending
-                mtf_long = dataframe["mtf_agree_long"] >= 2
-                mtf_short = (
-                    dataframe["mtf_agree_short"] >= 2)
-            else:  # ranging
-                # Longs in ranging bear mkt: need 1h uptrend
-                mtf_long = (
-                    (dataframe["mtf_agree_long"] >= 1)
-                    & (dataframe["trend_1h"] > 0)
-                )
-                mtf_short = (
-                    dataframe["mtf_agree_short"] >= 1)
+        # Multi-TF: 1-of-3 for ranging
+        mtf_short = (
+            dataframe["mtf_agree_short"] >= 1)
 
-            # Direction bias adjustments
-            if direction_bias == "long":
-                long_dir_thresh = dir_thresh * 0.85
-                short_dir_thresh = dir_thresh * 1.15
-            elif direction_bias == "short":
-                long_dir_thresh = dir_thresh * 1.15
-                short_dir_thresh = dir_thresh * 0.85
-            else:
-                long_dir_thresh = dir_thresh
-                short_dir_thresh = dir_thresh
+        # Direction bias adjustments
+        if direction_bias == "short":
+            short_dir_thresh = dir_thresh * 0.85
+        else:
+            short_dir_thresh = dir_thresh
 
-            if strategy == "OPT":
-                long_cond = mask & mtf_long & (
-                    (dataframe["ema_12"] > dataframe["ema_26"])
-                    & (dataframe["direction_score"]
-                       > long_dir_thresh)
-                    & (dataframe["rsi"] > 40)
-                    & (dataframe["rsi"] < 70)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"] * vol_mult)
-                    & (dataframe["adx"] > 15)
-                )
-                short_cond = mask & mtf_short & (
-                    (dataframe["ema_12"] < dataframe["ema_26"])
-                    & (dataframe["direction_score"]
-                       < -short_dir_thresh)
-                    & (dataframe["rsi"] > 30)
-                    & (dataframe["rsi"] < 60)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"] * vol_mult)
-                    & (dataframe["adx"] > 15)
-                )
+        if strategy == "OPT":
+            short_cond = mask & mtf_short & (
+                (dataframe["ema_12"] < dataframe["ema_26"])
+                & (dataframe["direction_score"]
+                   < -short_dir_thresh)
+                & (dataframe["rsi"] > 30)
+                & (dataframe["rsi"] < 60)
+                & (dataframe["volume"]
+                   > dataframe["volume_sma"] * vol_mult)
+                & (dataframe["adx"] > 15)
+            )
 
-            elif strategy == "A51":
-                # A51 scalping: tight filters for quality
-                a51_vol = max(vol_mult, 1.1)
-                long_cond = mask & mtf_long & (
-                    (dataframe["close"] > dataframe["vwap"])
-                    & (dataframe["ema_5"] > dataframe["ema_8"])
-                    & (dataframe["rsi"] > 42)
-                    & (dataframe["rsi"] < 62)
-                    & (dataframe["macd_hist"] > 0)
-                    & (dataframe["adx"] > 20)
-                    & (dataframe["direction_score"]
-                       > 0.15)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"]
-                       * a51_vol)
-                )
-                short_cond = mask & mtf_short & (
-                    (dataframe["close"] < dataframe["vwap"])
-                    & (dataframe["ema_5"] < dataframe["ema_8"])
-                    & (dataframe["rsi"] > 38)
-                    & (dataframe["rsi"] < 58)
-                    & (dataframe["macd_hist"] < 0)
-                    & (dataframe["adx"] > 20)
-                    & (dataframe["direction_score"]
-                       < -0.15)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"]
-                       * a51_vol)
-                )
+        elif strategy == "A51":
+            a51_vol = max(vol_mult, 1.1)
+            short_cond = mask & mtf_short & (
+                (dataframe["close"] < dataframe["vwap"])
+                & (dataframe["ema_5"] < dataframe["ema_8"])
+                & (dataframe["rsi"] > 38)
+                & (dataframe["rsi"] < 58)
+                & (dataframe["macd_hist"] < 0)
+                & (dataframe["adx"] > 20)
+                & (dataframe["direction_score"]
+                   < -0.15)
+                & (dataframe["volume"]
+                   > dataframe["volume_sma"]
+                   * a51_vol)
+            )
 
-            elif strategy == "A31":
-                # A31 squeeze breakout — strong signal only
-                long_cond = mask & mtf_long & (
-                    (dataframe["squeeze_fire"] == 1)
-                    & (dataframe["momentum"] > 0)
-                    & (dataframe["close"]
-                       > dataframe["ema_26"])
-                    & (dataframe["direction_score"]
-                       > 0.2)
-                    & (dataframe["rsi"] > 40)
-                    & (dataframe["rsi"] < 70)
-                    & (dataframe["adx"] > 15)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"]
-                       * 0.8)
-                )
-                short_cond = mask & mtf_short & (
-                    (dataframe["squeeze_fire"] == 1)
-                    & (dataframe["momentum"] < 0)
-                    & (dataframe["close"]
-                       < dataframe["ema_26"])
-                    & (dataframe["direction_score"]
-                       < -0.2)
-                    & (dataframe["rsi"] > 30)
-                    & (dataframe["rsi"] < 60)
-                    & (dataframe["adx"] > 15)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"]
-                       * 0.8)
-                )
+        elif strategy == "A31":
+            short_cond = mask & mtf_short & (
+                (dataframe["squeeze_fire"] == 1)
+                & (dataframe["momentum"] < 0)
+                & (dataframe["close"]
+                   < dataframe["ema_26"])
+                & (dataframe["direction_score"]
+                   < -0.2)
+                & (dataframe["rsi"] > 30)
+                & (dataframe["rsi"] < 60)
+                & (dataframe["adx"] > 15)
+                & (dataframe["volume"]
+                   > dataframe["volume_sma"]
+                   * 0.8)
+            )
 
-            else:  # A52 default
-                long_cond = mask & mtf_long & (
-                    (dataframe["direction_score"]
-                     > long_dir_thresh)
-                    & (dataframe["close"]
-                       > dataframe["ema_12"])
-                    & (dataframe["rsi"] > 40)
-                    & (dataframe["rsi"] < 68)
-                    & (dataframe["macd_hist"] > 0)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"]
-                       * vol_mult)
-                    & (dataframe["adx"] > 15)
-                )
-                short_cond = mask & mtf_short & (
-                    (dataframe["direction_score"]
-                     < -short_dir_thresh)
-                    & (dataframe["close"]
-                       < dataframe["ema_12"])
-                    & (dataframe["rsi"] > 32)
-                    & (dataframe["rsi"] < 60)
-                    & (dataframe["macd_hist"] < 0)
-                    & (dataframe["volume"]
-                       > dataframe["volume_sma"]
-                       * vol_mult)
-                    & (dataframe["adx"] > 15)
-                )
+        else:  # A52 default
+            short_cond = mask & mtf_short & (
+                (dataframe["direction_score"]
+                 < -short_dir_thresh)
+                & (dataframe["close"]
+                   < dataframe["ema_12"])
+                & (dataframe["rsi"] > 32)
+                & (dataframe["rsi"] < 60)
+                & (dataframe["macd_hist"] < 0)
+                & (dataframe["volume"]
+                   > dataframe["volume_sma"]
+                   * vol_mult)
+                & (dataframe["adx"] > 15)
+            )
 
-            # ── R2 ranging shorts only ──
-            # R3 (volatile), R0 (trending-up), R1 (trending-down)
-            # all produce more SL losses than ROI wins.
-            # R2 shorts are the only proven profitable setup.
-            if regime_id != 2:
-                long_cond = mask & False
-                short_cond = mask & False
-            else:
-                # R2: short only, no longs in bear market
-                long_cond = mask & False
-
-            tag = "ml_{}_r{}".format(
-                strategy.lower(), regime_id)
-            dataframe.loc[
-                long_cond, ["enter_long", "enter_tag"]
-            ] = (1, "{}_long".format(tag))
-            dataframe.loc[
-                short_cond, ["enter_short", "enter_tag"]
-            ] = (1, "{}_short".format(tag))
-
-            # ── A52 fallback DISABLED ──
-            # Fallback trades were the #1 source of losses.
-            # All fallback entry code removed.
+        tag = "ml_{}_r{}".format(
+            strategy.lower(), regime_id)
+        dataframe.loc[
+            short_cond, ["enter_short", "enter_tag"]
+        ] = (1, "{}_short".format(tag))
 
         return dataframe
 

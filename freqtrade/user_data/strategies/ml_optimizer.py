@@ -411,7 +411,13 @@ def classify_trade_regimes(trades):
 
 
 def build_trade_features(trades):
-    """Build extended feature matrix from trade attributes for regime model."""
+    """Build feature matrix from ENTRY-KNOWN trade attributes for regime model.
+
+    IMPORTANT: Only features known at trade entry time are included.
+    Future-known features (profit_ratio, direction, mfe, mae, trade_duration,
+    stake_amount) were removed — they leak outcome information and make the
+    regime model useless in live trading.
+    """
     features = []
     for t in trades:
         open_ts = t.get("open_timestamp", 0)
@@ -419,33 +425,12 @@ def build_trade_features(trades):
             dt = datetime.utcfromtimestamp(open_ts / 1000)
         else:
             dt = datetime(2024, 1, 1)
-        open_rate = t.get("open_rate", 1) or 1
-        max_rate = t.get("max_rate", open_rate)
-        min_rate = t.get("min_rate", open_rate)
-        close_rate = t.get("close_rate", open_rate)
-        price_range = (max_rate - min_rate) / open_rate
-
-        direction = (close_rate - open_rate) / open_rate
-
-        if t.get("is_short", False):
-            mfe = (open_rate - min_rate) / open_rate
-            mae = (max_rate - open_rate) / open_rate
-        else:
-            mfe = (max_rate - open_rate) / open_rate
-            mae = (open_rate - min_rate) / open_rate
 
         features.append([
-            t.get("trade_duration", 0) or 0,
-            1 if t.get("is_short", False) else 0,
-            t.get("profit_ratio", 0) or 0,
-            t.get("stake_amount", 100) or 100,
             dt.hour,
             dt.weekday(),
+            1 if t.get("is_short", False) else 0,
             t.get("leverage", 1) or 1,
-            price_range,
-            direction,
-            mfe,
-            mae,
         ])
     if features:
         return np.array(features, dtype=float)
@@ -1668,8 +1653,7 @@ def train_regime_model(all_trades):
             cv = cross_val_score(model, features, base_regimes, cv=n_splits, scoring="accuracy")
             print("Regime model CV accuracy: {:.3f} +/- {:.3f}".format(cv.mean(), cv.std()))
         fi = model.feature_importances_
-        feat_names = ["duration", "is_short", "profit", "stake", "hour",
-                      "weekday", "leverage", "price_range", "direction", "mfe", "mae"]
+        feat_names = ["hour", "weekday", "is_short", "leverage"]
         top = sorted(zip(feat_names, fi), key=lambda x: -x[1])[:5]
         print("Top features: " + ", ".join("{}={:.3f}".format(n, v) for n, v in top))
         return model

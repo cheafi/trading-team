@@ -1,10 +1,10 @@
 {
   "trading_mode": "futures",
   "margin_mode": "isolated",
-  "max_open_trades": 6,
+  "max_open_trades": 4,
   "stake_currency": "USDT",
-  "stake_amount": "unlimited",
-  "tradable_balance_ratio": 0.99,
+  "stake_amount": 200,
+  "tradable_balance_ratio": 0.80,
   "dry_run": true,
   "dry_run_wallet": 10000,
 
@@ -13,15 +13,7 @@
     "key": "",
     "secret": "",
     "pair_whitelist": [
-      "ETH/USDT:USDT",
-      "SOL/USDT:USDT",
-      "ARB/USDT:USDT",
-      "SUI/USDT:USDT",
-      "APT/USDT:USDT",
-      "WIF/USDT:USDT",
-      "FET/USDT:USDT",
-      "TIA/USDT:USDT",
-      "SEI/USDT:USDT"
+      "ETH/USDT:USDT"
     ],
     "pair_blacklist": []
   },

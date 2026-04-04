@@ -28,6 +28,9 @@ services:
       - TZ=${TZ:-Asia/Hong_Kong}
       - FREQTRADE__EXCHANGE__KEY=${EXCHANGE_KEY:-}
       - FREQTRADE__EXCHANGE__SECRET=${EXCHANGE_SECRET:-}
+      - FREQTRADE__API_SERVER__USERNAME=${FREQTRADE_USER:-freqtrader}
+      - FREQTRADE__API_SERVER__PASSWORD=${FREQTRADE_PASS:-SuperSecure123}
+      - FREQTRADE__API_SERVER__JWT_SECRET_KEY=${FREQTRADE_JWT_SECRET:-changeme-jwt-secret-key-trading-team}
     deploy:
       resources:
         limits:
