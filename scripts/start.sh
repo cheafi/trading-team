@@ -8,8 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# Ensure Docker is available
-export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
 
 echo "� Cheafi Trading Team — Starting..."
 echo "─────────────────────────────────"

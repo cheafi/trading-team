@@ -836,10 +836,6 @@ def train_trade_quality_model(trades):
         if pr is None:
             continue
         pr = float(pr)
-        open_rate = t.get("open_rate", 1) or 1
-        max_rate = t.get("max_rate", open_rate)
-        min_rate = t.get("min_rate", open_rate)
-        dur = t.get("trade_duration", 0) or 0
         ts = t.get("open_timestamp", 0)
 
         if ts:
@@ -847,17 +843,14 @@ def train_trade_quality_model(trades):
         else:
             dt = datetime(2024, 1, 1)
 
-        price_range = (max_rate - min_rate) / open_rate
         is_short = 1 if t.get("is_short", False) else 0
 
+        # Only use entry-known features (no duration, stake, leverage,
+        # price_range — those are future-known or circular)
         features.append([
             dt.hour,
             dt.weekday(),
             is_short,
-            price_range,
-            dur,
-            t.get("stake_amount", 100) or 100,
-            t.get("leverage", 1) or 1,
         ])
 
         # Quality label: good trade = profit > fees

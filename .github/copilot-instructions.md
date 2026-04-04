@@ -96,6 +96,6 @@ curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit
 ## Risk Rules (never violate)
 
 - Max drawdown alert: **15%**, emergency halt: **20%**
-- Max 6 open positions (`max_open_trades: 6`)
+- Max 4 open positions (`max_open_trades: 4`)
 - Minimum edge: **2× round-trip fee** (0.10%) before entering any trade
 - Default is `"dry_run": true` — set to `false` only with explicit live keys in `.env`

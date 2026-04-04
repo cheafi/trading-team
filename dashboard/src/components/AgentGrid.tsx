@@ -25,7 +25,7 @@ export function AgentGrid() {
         <div
           key={agent.id}
           className={clsx(
-            "bg-[#1a2332] rounded-xl border p-4 card-hover cursor-pointer",
+            "bg-[#1a2332] rounded-xl border p-4 card-hover",
             agent.status === "running"
               ? "border-blue-500/40 glow-blue"
               : agent.status === "error"

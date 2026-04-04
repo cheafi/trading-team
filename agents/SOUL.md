@@ -20,7 +20,7 @@ Our goal: achieve consistent, risk-managed returns through systematic quantitati
 
 ### Risk Parameters
 - Max drawdown: 15%
-- Max open positions: 5
+- Max open positions: 4
 - Max position size: 80% of available capital (per-strategy `c` parameter)
 - Trailing stops on all strategies
 - Automatic position reduction on risk threshold breach

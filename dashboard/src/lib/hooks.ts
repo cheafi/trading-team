@@ -176,6 +176,9 @@ export function useMLJobLogs(jobId: string | null, limit = 200) {
 }
 
 export async function triggerMLTrain(): Promise<{ status: string; jobId?: string; error?: string }> {
-  const res = await fetch("/api/ml/train", { method: "POST" });
+  const res = await fetch("/api/ml/train", {
+    method: "POST",
+    headers: { "X-API-Key": process.env.NEXT_PUBLIC_ML_API_KEY || "" },
+  });
   return res.json();
 }

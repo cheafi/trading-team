@@ -27,7 +27,7 @@ export function TeamHeader() {
             Cheafi
           </h1>
           <p className="text-sm text-slate-400">
-            Multi-Pair Futures • R2 Short Strategy • 5m
+            ETH/USDT:USDT Futures • Adaptive ML • 5m
           </p>
         </div>
       </div>

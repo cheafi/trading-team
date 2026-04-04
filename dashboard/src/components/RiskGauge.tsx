@@ -33,6 +33,12 @@ export function RiskGauge() {
           ? "bg-yellow-500"
           : "bg-emerald-500";
 
+  const badgeBg =
+    riskLevel === "CRITICAL" ? "bg-red-500/20"
+    : riskLevel === "HIGH" ? "bg-orange-500/20"
+    : riskLevel === "MEDIUM" ? "bg-yellow-500/20"
+    : "bg-emerald-500/20";
+
   const barWidth = Math.min(dd / 25 * 100, 100);
 
   return (
@@ -42,7 +48,7 @@ export function RiskGauge() {
           🛡️ 風險控制
         </h3>
         <span
-          className={`text-xs font-bold px-2 py-1 rounded ${riskColor} bg-opacity-20`}
+          className={`text-xs font-bold px-2 py-1 rounded ${riskColor} ${badgeBg}`}
         >
           {riskLevel}
         </span>

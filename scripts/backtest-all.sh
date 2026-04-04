@@ -4,7 +4,6 @@
 # ──────────────────────────────────────────────────
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
 
 STRATEGIES=("A52Strategy" "OPTStrategy" "A51Strategy" "A31Strategy" "AdaptiveMLStrategy")
 TIMERANGE="${1:-20240101-20241231}"

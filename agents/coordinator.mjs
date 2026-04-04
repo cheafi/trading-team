@@ -146,7 +146,7 @@ async function runQuantResearcher(agent) {
     type: "analysis",
     data: {
       totalProfit: profit?.profit_all_coin || 0,
-      profitPercent: profit?.profit_all_perc || 0,
+      profitPercent: profit?.profit_all_percent || 0,
       tradeCount: profit?.trade_count || 0,
       topStrategies:
         performance?.slice(0, 5).map((p) => ({
@@ -202,11 +202,11 @@ async function runRiskManager(agent) {
   const totalValue = balance?.total || 0;
   const openTrades = status?.length || 0;
   const drawdown = profit?.max_drawdown || 0;
-  const drawdownPct = profit?.max_drawdown_perc || 0;
+  const drawdownPct = (profit?.max_drawdown || 0) * 100;
 
   const alerts = [];
   if (drawdownPct > 15) alerts.push(`⚠️ DD ${drawdownPct.toFixed(1)}% > 15% threshold`);
-  if (openTrades > 5) alerts.push(`⚠️ ${openTrades} open positions (max recommended: 5)`);
+  if (openTrades > 4) alerts.push(`⚠️ ${openTrades} open positions (max: 4)`);
 
   const riskLevel =
     drawdownPct > 20 ? "CRITICAL" :
@@ -274,18 +274,19 @@ async function runSignalEngineer(agent) {
 }
 
 async function runMarketAnalyst(agent) {
-  log.info(`[${agent.id}] Scanning market conditions...`);
+  log.info(`[${agent.id}] Scanning portfolio posture...`);
 
   const status = await ftApi("/status");
   const pair = "ETH/USDT:USDT";
 
-  // Aggregate market signals from open trades
+  // Portfolio posture: derived from open trade directions
+  // (not an independent market analysis — requires candle data for that)
   const longTrades = status?.filter((t) => !t.is_short)?.length || 0;
   const shortTrades = status?.filter((t) => t.is_short)?.length || 0;
 
-  const sentiment =
-    longTrades > shortTrades ? "BULLISH" :
-    shortTrades > longTrades ? "BEARISH" : "NEUTRAL";
+  const posture =
+    longTrades > shortTrades ? "NET_LONG" :
+    shortTrades > longTrades ? "NET_SHORT" : "FLAT";
 
   const finding = {
     timestamp: new Date().toISOString(),
@@ -293,12 +294,12 @@ async function runMarketAnalyst(agent) {
     type: "market-scan",
     data: {
       pair,
-      sentiment,
+      posture,
       longTrades,
       shortTrades,
       timestamp: Date.now(),
     },
-    summary: `${pair} sentiment: ${sentiment} (L:${longTrades} S:${shortTrades})`,
+    summary: `${pair} posture: ${posture} (L:${longTrades} S:${shortTrades})`,
   };
 
   agent.findings.unshift(finding);
@@ -346,7 +347,7 @@ async function runMLOptimizer(agent) {
   const winRate = profit?.trade_count > 0
     ? ((profit?.winning_trades || 0) / profit.trade_count)
     : 0;
-  const maxDD = profit?.max_drawdown_perc || 0;
+  const maxDD = (profit?.max_drawdown || 0) * 100;
   const totalProfit = profit?.profit_all_coin || 0;
 
   // 2. Read current ML model params (if they exist)
@@ -388,17 +389,20 @@ async function runMLOptimizer(agent) {
     else if (avgSecond < avgFirst * 0.95) improvementTrend = "degrading";
   }
 
-  // 5. Determine current regime from model params
+  // 5. Determine best-performing regime from model params
+  // Note: this is the regime with highest optimizer score,
+  // NOT the current live candle regime (which requires indicator data)
   let activeRegime = "unknown";
   let activeStrategy = "A52";
   if (currentParams) {
-    // Find which regime has highest confidence based on recent params
     const regimeNames = { "0": "TRENDING_UP", "1": "TRENDING_DOWN", "2": "RANGING", "3": "VOLATILE" };
+    let bestScore = -Infinity;
     for (const [rid, params] of Object.entries(currentParams)) {
-      if (params.source_score && parseFloat(params.source_score) > 0.5) {
+      const score = parseFloat(params.source_score || 0);
+      if (score > bestScore) {
+        bestScore = score;
         activeRegime = regimeNames[rid] || `Regime-${rid}`;
         activeStrategy = params.strategy || "A52";
-        break;
       }
     }
   }
@@ -660,12 +664,24 @@ function startScheduler() {
   }
 }
 
+// ─── Auth helpers ──────────────────────────────────────────────
+const API_KEY = process.env.ML_TRAIN_API_KEY || "";
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:3000,http://dashboard:3000").split(",").map(s => s.trim());
+
+function checkAuth(req) {
+  if (!API_KEY) return true; // no key configured = open (dev mode)
+  const provided = req.headers["x-api-key"];
+  return provided === API_KEY;
+}
+
 // ─── HTTP API (for dashboard) ──────────────────────────────────
 const server = createServer(async (req, res) => {
+  const origin = req.headers.origin || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -740,8 +756,13 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Trigger agent manually
+    // Trigger agent manually (requires API key)
     if (url.pathname === "/api/run" && req.method === "POST") {
+      if (!checkAuth(req)) {
+        res.writeHead(403);
+        res.end(JSON.stringify({ error: "Forbidden: invalid API key" }));
+        return;
+      }
       let body = "";
       for await (const chunk of req) body += chunk;
       const { agentId } = JSON.parse(body);
@@ -827,17 +848,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Trigger ML training manually (start background job)
+    // Trigger ML training manually (requires API key)
     if (url.pathname === "/api/ml/train" && req.method === "POST") {
-      // Optional API key protection
-      const apiKey = process.env.ML_TRAIN_API_KEY;
-      if (apiKey) {
-        const provided = req.headers["x-api-key"] || url.searchParams.get("key");
-        if (provided !== apiKey) {
-          res.writeHead(403);
-          res.end(JSON.stringify({ error: "Invalid API key" }));
-          return;
-        }
+      if (!checkAuth(req)) {
+        res.writeHead(403);
+        res.end(JSON.stringify({ error: "Forbidden: invalid API key" }));
+        return;
       }
 
       // Rate-limit cooldown: minimum 5 minutes between training starts
@@ -865,8 +881,13 @@ const server = createServer(async (req, res) => {
     }
 
     // ─── Backtest API ────────────────────────────────────────
-    // Run backtest
+    // Run backtest (requires API key)
     if (url.pathname === "/api/backtest/run" && req.method === "POST") {
+      if (!checkAuth(req)) {
+        res.writeHead(403);
+        res.end(JSON.stringify({ error: "Forbidden: invalid API key" }));
+        return;
+      }
       let body = "";
       for await (const chunk of req) body += chunk;
       const { strategy, timerange } = JSON.parse(body || "{}");
@@ -897,8 +918,13 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Download historical data
+    // Download historical data (requires API key)
     if (url.pathname === "/api/data/download" && req.method === "POST") {
+      if (!checkAuth(req)) {
+        res.writeHead(403);
+        res.end(JSON.stringify({ error: "Forbidden: invalid API key" }));
+        return;
+      }
       let body = "";
       for await (const chunk of req) body += chunk;
       const { pairs, timeframes, timerange } = JSON.parse(body || "{}");
@@ -948,10 +974,11 @@ async function downloadData(pairs, timeframes, timerange) {
   const safePat = /^[a-zA-Z0-9/:_\-. ]+$/;
   const pairArg = pairs.filter(p => safePat.test(p)).join(" ");
   const tfArg = timeframes.filter(t => safePat.test(t)).join(" ");
-  if (!safePat.test(timerange) || !pairArg || !tfArg) {
+  const safeTimerange = /^\d{8}-\d{8}$/.test(timerange) ? timerange : "20240101-20241231";
+  if (!pairArg || !tfArg) {
     throw new Error("Invalid input characters in download params");
   }
-  const cmd = `docker compose run --rm freqtrade download-data --config /freqtrade/config/config.json --pairs ${pairArg} --timeframes ${tfArg} --timerange ${timerange}`;
+  const cmd = `docker compose run --rm freqtrade download-data --config /freqtrade/config/config.json --pairs ${pairArg} --timeframes ${tfArg} --timerange ${safeTimerange}`;
 
   return new Promise((resolve, reject) => {
     log.info({ cmd }, "Downloading data...");
@@ -975,11 +1002,12 @@ async function runBacktests(strategies, timerange) {
     log.info({ strategy, timerange }, "Running backtest...");
 
     try {
-      // Sanitize strategy name to prevent command injection
+      // Sanitize strategy name and timerange to prevent command injection
       const safeStrategy = strategy.replace(/[^a-zA-Z0-9_]/g, "");
+      const safeTimerange = /^\d{8}-\d{8}$/.test(timerange) ? timerange : "20240101-20241231";
       const output = await new Promise((resolve, reject) => {
         exec(
-          `docker compose run --rm freqtrade backtesting --config /freqtrade/config/config_backtest.json --strategy ${safeStrategy} --strategy-path /freqtrade/user_data/strategies --timerange ${timerange} --timeframe 5m --enable-protections --export trades`,
+          `docker compose run --rm freqtrade backtesting --config /freqtrade/config/config_backtest.json --strategy ${safeStrategy} --strategy-path /freqtrade/user_data/strategies --timerange ${safeTimerange} --timeframe 5m --enable-protections --export trades`,
           { cwd: "/app", timeout: 600_000 },
           (err, stdout, stderr) => {
             if (err) reject(err);

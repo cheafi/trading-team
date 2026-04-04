@@ -13,11 +13,6 @@
 # ──────────────────────────────────────────────────────────
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
-
-mkdir -p ~/.docker/cli-plugins 2>/dev/null
-ln -sf /Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose \
-    ~/.docker/cli-plugins/docker-compose 2>/dev/null
 
 INTERVAL_HOURS="${1:-6}"
 INTERVAL_SECS=$((INTERVAL_HOURS * 3600))

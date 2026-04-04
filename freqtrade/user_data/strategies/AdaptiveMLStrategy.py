@@ -983,17 +983,12 @@ class AdaptiveMLStrategy(IStrategy):
                 min_quality = thresholds.get("min_quality", 0.5)
 
                 if model and scaler and hasattr(current_time, "hour"):
-                    # Use constant stake=130 so quality model
-                    # isn't affected by position sizing changes.
-                    # Model was trained on ~128 USDT avg stakes.
+                    # Entry-known features only (must match
+                    # train_trade_quality_model() in ml_optimizer.py)
                     features = np.array([[
                         current_time.hour,
                         current_time.weekday(),
                         1 if side == "short" else 0,
-                        float(last.get("atr_norm", 1.0)) / 100,
-                        0,   # duration unknown at entry
-                        130.0,   # constant stake reference
-                        1,   # leverage placeholder
                     ]])
                     scaled = scaler.transform(features)
                     quality = model.predict_proba(scaled)[0][1]

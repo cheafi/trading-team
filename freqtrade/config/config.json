@@ -1,10 +1,10 @@
 {
   "trading_mode": "futures",
   "margin_mode": "isolated",
-  "max_open_trades": 6,
+  "max_open_trades": 4,
   "stake_currency": "USDT",
-  "stake_amount": "unlimited",
-  "tradable_balance_ratio": 0.99,
+  "stake_amount": 200,
+  "tradable_balance_ratio": 0.80,
   "fiat_display_currency": "USD",
   "dry_run": true,
   "dry_run_wallet": 10000,
@@ -66,10 +66,10 @@
     "listen_port": 8080,
     "verbosity": "error",
     "enable_openapi": true,
-    "jwt_secret_key": "changeme-jwt-secret-key-trading-team",
+    "jwt_secret_key": "${FREQTRADE_JWT_SECRET:-changeme-jwt-secret-key-trading-team}",
     "CORS_origins": ["http://localhost:3000"],
-    "username": "freqtrader",
-    "password": "SuperSecure123"
+    "username": "${FREQTRADE_USER:-freqtrader}",
+    "password": "${FREQTRADE_PASS:-SuperSecure123}"
   },
 
   "timeframe": "5m",
