@@ -104,6 +104,7 @@ services:
       - TZ=${TZ:-Asia/Hong_Kong}
     volumes:
       - ./agents:/app/agents
+      - ./scripts:/app/scripts
       - ./shared:/app/shared
       - ./freqtrade/user_data:/freqtrade/user_data
     depends_on:

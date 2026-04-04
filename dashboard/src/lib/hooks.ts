@@ -148,3 +148,34 @@ export function useMLHistory() {
     fallbackData: [],
   });
 }
+
+// ─── ML Job Control ─────────────────────────────────────
+export interface MLJob {
+  id: string;
+  status: "running" | "finished" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  exitCode?: number;
+  source: string;
+  pid?: number;
+}
+
+export function useMLJobs(limit = 10) {
+  return useSWR<MLJob[]>(`/api/ml/jobs?limit=${limit}`, fetcher, {
+    refreshInterval: 5000,
+    fallbackData: [],
+  });
+}
+
+export function useMLJobLogs(jobId: string | null, limit = 200) {
+  return useSWR<string[]>(
+    jobId ? `/api/ml/jobs/${jobId}/logs?limit=${limit}` : null,
+    fetcher,
+    { refreshInterval: 2000, fallbackData: [] }
+  );
+}
+
+export async function triggerMLTrain(): Promise<{ status: string; jobId?: string; error?: string }> {
+  const res = await fetch("/api/ml/train", { method: "POST" });
+  return res.json();
+}

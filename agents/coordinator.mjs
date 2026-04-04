@@ -7,7 +7,7 @@
  * - Agents can dispatch sub-tasks to each other
  */
 import { createServer } from "node:http";
-import { execSync, exec } from "node:child_process";
+import { execSync, exec, spawn } from "node:child_process";
 import Redis from "ioredis";
 import { CronJob } from "cron";
 import pino from "pino";
@@ -450,6 +450,124 @@ async function runMLOptimizer(agent) {
   return finding;
 }
 
+// Spawn a background ML training job, stream logs to Redis, and persist job state.
+async function startTrainingJob(source = "api") {
+  const jobId = Date.now().toString() + "-" + Math.random().toString(36).slice(2, 8);
+  const summaryKey = "trading:job:ml_training"; // current job summary
+  const jobLogsKey = `trading:jobs:ml_training:logs:${jobId}`;
+  const resultsKey = `trading:jobs:ml_training:results`;
+  const lockKey = "trading:job:ml_training_lock";
+
+  // Try to acquire a lock (prevent concurrent training runs)
+  const got = await redis.set(lockKey, jobId, "NX", "EX", 60 * 60); // 1h TTL
+  if (!got) {
+    const existing = await redis.get(lockKey);
+    throw new Error(`Another ML training job is running (${existing || 'unknown'})`);
+  }
+
+  // Prefer container-safe script (runs ml_optimizer.py directly)
+  const containerScript = "/app/scripts/ml-train-container.sh";
+  const hostScript = "/app/scripts/ml-train.sh";
+  const fs = await import("node:fs/promises");
+  let cmd, args;
+  try {
+    const cst = await fs.stat(containerScript).catch(() => null);
+    const hst = await fs.stat(hostScript).catch(() => null);
+    if (cst && cst.isFile()) {
+      cmd = "stdbuf";
+      args = ["-oL", "-eL", "bash", containerScript];
+    } else if (hst && hst.isFile()) {
+      cmd = "stdbuf";
+      args = ["-oL", "-eL", "bash", hostScript];
+    } else {
+      cmd = "sh";
+      args = ["-c", "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'"];
+    }
+  } catch (e) {
+    cmd = "sh";
+    args = ["-c", "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'"];
+  }
+
+  let child;
+  try {
+    child = spawn(cmd, args, {
+      cwd: "/app",
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (err) {
+    // Release lock on spawn failure
+    await redis.del(lockKey).catch(() => {});
+    throw new Error("Failed to spawn training job: " + err.message);
+  }
+
+  const job = {
+    id: jobId,
+    status: "running",
+    startedAt: new Date().toISOString(),
+    pid: child.pid,
+    source,
+  };
+
+  // Persist summary and index
+  await redis.set(summaryKey, JSON.stringify(job));
+  await redis.lpush(resultsKey, JSON.stringify(job));
+  await redis.ltrim(resultsKey, 0, 199);
+
+  const pushLog = async (line) => {
+    try {
+      await redis.lpush(jobLogsKey, line);
+      await redis.ltrim(jobLogsKey, 0, 999);
+      await redis.publish("trading:jobs:ml_training", JSON.stringify({ jobId, line }));
+    } catch (e) {
+      log.warn({ err: e }, "Failed to push training log to Redis");
+    }
+  };
+
+  child.stdout.on("data", (buf) => {
+    const lines = buf.toString().split(/\r?\n/).filter(Boolean);
+    for (const l of lines) pushLog(l);
+  });
+  child.stderr.on("data", (buf) => {
+    const lines = buf.toString().split(/\r?\n/).filter(Boolean);
+    for (const l of lines) pushLog(`[ERR] ${l}`);
+  });
+
+  child.on("exit", async (code, signal) => {
+    job.status = code === 0 ? "finished" : "failed";
+    job.exitCode = code;
+    job.signal = signal;
+    job.finishedAt = new Date().toISOString();
+    try {
+      // Replace the running entry with the final state
+      await redis.set(summaryKey, JSON.stringify(job));
+      // Update the first element (running snapshot) to finished
+      await redis.lset(resultsKey, 0, JSON.stringify(job));
+      await redis.publish("trading:jobs:ml_training:finished", JSON.stringify(job));
+    } catch (e) {
+      log.warn({ err: e }, "Failed to persist training job result");
+    }
+    // Release lock
+    try { await redis.del(lockKey); } catch (e) {}
+    log.info({ jobId, code, signal }, "ML training job finished");
+
+    // Discord notification
+    if (code === 0) {
+      discord.sendAlert("success", `✅ ML training complete (job ${jobId})`).catch(() => {});
+    } else {
+      const msg = `❌ ML training FAILED (job ${jobId}, exit=${code})`;
+      discord.sendAlert("critical", msg).catch(() => {});
+      // Also publish to Redis alerts channel
+      redis.publish("trading:alerts", JSON.stringify({
+        alerts: [msg], riskLevel: "HIGH",
+      })).catch(() => {});
+    }
+  });
+
+  log.info({ jobId, pid: child.pid }, "Started ML training job");
+  return job;
+}
+
 const taskRunners = {
   "quant-researcher": runQuantResearcher,
   backtester: runBacktester,
@@ -671,12 +789,78 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Trigger ML training manually
+    // List recent ML jobs
+    if (url.pathname === "/api/ml/jobs") {
+      const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+      try {
+        const raw = await redis.lrange("trading:jobs:ml_training:results", 0, limit - 1);
+        const jobs = raw.map((r) => JSON.parse(r));
+        res.writeHead(200);
+        res.end(JSON.stringify(jobs));
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // Get logs for a specific job
+    if (url.pathname.startsWith("/api/ml/jobs/") && url.pathname.endsWith("/logs")) {
+      // path: /api/ml/jobs/:id/logs  →  ["", "api", "ml", "jobs", ID, "logs"]
+      const parts = url.pathname.split("/");
+      const jobId = parts[4];
+      if (!jobId) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "missing job id" }));
+        return;
+      }
+      const limit = parseInt(url.searchParams.get("limit") || "500", 10);
+      try {
+        const key = `trading:jobs:ml_training:logs:${jobId}`;
+        const raw = await redis.lrange(key, 0, limit - 1);
+        res.writeHead(200);
+        res.end(JSON.stringify(raw));
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // Trigger ML training manually (start background job)
     if (url.pathname === "/api/ml/train" && req.method === "POST") {
-      const mlAgent = agents.find(a => a.id === "ml-optimizer");
-      if (mlAgent) executeAgent(mlAgent);
-      res.writeHead(202);
-      res.end(JSON.stringify({ status: "ml-training-triggered" }));
+      // Optional API key protection
+      const apiKey = process.env.ML_TRAIN_API_KEY;
+      if (apiKey) {
+        const provided = req.headers["x-api-key"] || url.searchParams.get("key");
+        if (provided !== apiKey) {
+          res.writeHead(403);
+          res.end(JSON.stringify({ error: "Invalid API key" }));
+          return;
+        }
+      }
+
+      // Rate-limit cooldown: minimum 5 minutes between training starts
+      const cdKey = "trading:job:ml_training_cooldown";
+      const cdVal = await redis.get(cdKey);
+      if (cdVal) {
+        res.writeHead(429);
+        res.end(JSON.stringify({ error: "Training cooldown active. Try again later.", cooldownUntil: cdVal }));
+        return;
+      }
+
+      try {
+        const job = await startTrainingJob("api");
+        // Set 5-minute cooldown
+        await redis.set(cdKey, new Date(Date.now() + 300_000).toISOString(), "EX", 300);
+        res.writeHead(202);
+        res.end(JSON.stringify({ status: "ml-training-started", jobId: job.id }));
+      } catch (err) {
+        log.error({ err }, "Failed to start ML training job");
+        const status = err.message.includes("Another ML training") ? 409 : 500;
+        res.writeHead(status);
+        res.end(JSON.stringify({ error: err.message }));
+      }
       return;
     }
 

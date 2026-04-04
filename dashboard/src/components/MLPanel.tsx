@@ -1,6 +1,13 @@
 "use client";
 
-import { useMLState, useMLHistory } from "@/lib/hooks";
+import { useState, useRef, useEffect } from "react";
+import {
+  useMLState,
+  useMLHistory,
+  useMLJobs,
+  useMLJobLogs,
+  triggerMLTrain,
+} from "@/lib/hooks";
 
 const REGIME_COLORS: Record<string, string> = {
   TRENDING_UP: "text-emerald-400",
@@ -26,14 +33,99 @@ const TREND_DISPLAY: Record<string, { text: string; color: string }> = {
   stable: { text: "→ 穩定", color: "text-slate-400" },
 };
 
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    running: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    finished: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+    failed: "bg-red-500/20 text-red-400 border-red-500/30",
+  };
+  const icons: Record<string, string> = {
+    running: "⏳",
+    finished: "✅",
+    failed: "❌",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${styles[status] || styles.finished}`}
+    >
+      {icons[status] || "•"} {status}
+    </span>
+  );
+}
+
+function JobLogViewer({ jobId }: { jobId: string }) {
+  const { data: logs } = useMLJobLogs(jobId);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
+
+  // Redis LPUSH stores newest first — reverse for chronological order
+  const ordered = [...(logs || [])].reverse();
+
+  return (
+    <div className="bg-[#0d1117] rounded-lg border border-slate-700/50 p-3 max-h-48 overflow-y-auto font-mono text-[10px] text-slate-300">
+      {ordered.length === 0 ? (
+        <p className="text-slate-500">No logs yet…</p>
+      ) : (
+        ordered.map((line, i) => (
+          <div
+            key={i}
+            className={
+              line.startsWith("[ERR]")
+                ? "text-red-400"
+                : line.startsWith("✅") || line.startsWith("🧠")
+                  ? "text-emerald-400"
+                  : line.startsWith("❌")
+                    ? "text-red-400"
+                    : ""
+            }
+          >
+            {line}
+          </div>
+        ))
+      )}
+      <div ref={bottomRef} />
+    </div>
+  );
+}
+
 export function MLPanel() {
   const { data: ml } = useMLState();
   const { data: history } = useMLHistory();
+  const { data: jobs, mutate: refreshJobs } = useMLJobs(8);
+
+  const [selectedJob, setSelectedJob] = useState<string | null>(null);
+  const [training, setTraining] = useState(false);
+  const [trainMsg, setTrainMsg] = useState<string | null>(null);
 
   const regime = ml?.regime || "unknown";
   const regimeColor = REGIME_COLORS[regime] || "text-slate-400";
   const regimeEmoji = REGIME_EMOJI[regime] || "❓";
-  const trend = TREND_DISPLAY[ml?.improvementTrend || "stable"] || TREND_DISPLAY.stable;
+  const trend =
+    TREND_DISPLAY[ml?.improvementTrend || "stable"] || TREND_DISPLAY.stable;
+
+  const isRunning = jobs?.some((j) => j.status === "running");
+
+  async function handleTrain() {
+    setTraining(true);
+    setTrainMsg(null);
+    try {
+      const result = await triggerMLTrain();
+      if (result.jobId) {
+        setTrainMsg(`Job started: ${result.jobId}`);
+        setSelectedJob(result.jobId);
+        refreshJobs();
+      } else {
+        setTrainMsg(result.error || "Unknown error");
+      }
+    } catch (err: unknown) {
+      setTrainMsg(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setTraining(false);
+    }
+  }
 
   return (
     <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-5">
@@ -42,12 +134,37 @@ export function MLPanel() {
         <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
           <span>🧠</span> ML 自適應引擎
         </h3>
-        <span className="text-[10px] text-slate-500">
-          {ml?.lastTrained
-            ? `上次訓練: ${new Date(ml.lastTrained).toLocaleString("zh-TW")}`
-            : "尚未訓練"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-slate-500">
+            {ml?.lastTrained
+              ? `上次訓練: ${new Date(ml.lastTrained).toLocaleString("zh-TW")}`
+              : "尚未訓練"}
+          </span>
+          <button
+            onClick={handleTrain}
+            disabled={training || !!isRunning}
+            className={`px-2.5 py-1 rounded text-[10px] font-medium transition-colors ${
+              training || isRunning
+                ? "bg-slate-700 text-slate-500 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-500 text-white cursor-pointer"
+            }`}
+          >
+            {isRunning ? "⏳ 訓練中..." : training ? "啟動中..." : "🚀 訓練"}
+          </button>
+        </div>
       </div>
+
+      {trainMsg && (
+        <div
+          className={`text-[10px] mb-3 px-2 py-1 rounded ${
+            trainMsg.startsWith("Job started")
+              ? "bg-emerald-900/30 text-emerald-400"
+              : "bg-red-900/30 text-red-400"
+          }`}
+        >
+          {trainMsg}
+        </div>
+      )}
 
       {/* Active Regime */}
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -65,9 +182,7 @@ export function MLPanel() {
         </div>
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
           <p className="text-[10px] text-slate-500 mb-1">學習趨勢</p>
-          <p className={`text-sm font-bold ${trend.color}`}>
-            {trend.text}
-          </p>
+          <p className={`text-sm font-bold ${trend.color}`}>{trend.text}</p>
         </div>
       </div>
 
@@ -137,6 +252,64 @@ export function MLPanel() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Training Jobs */}
+      {jobs && jobs.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[10px] text-slate-500 mb-2">
+            訓練作業 Training Jobs
+          </p>
+          <div className="space-y-1">
+            {jobs.slice(0, 5).map((job) => (
+              <button
+                key={job.id}
+                onClick={() =>
+                  setSelectedJob(selectedJob === job.id ? null : job.id)
+                }
+                className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-[10px] transition-colors ${
+                  selectedJob === job.id
+                    ? "bg-slate-700/60 border border-slate-600"
+                    : "bg-[#111827] border border-transparent hover:border-slate-700/50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={job.status} />
+                  <span className="text-slate-400 font-mono">
+                    {job.id.slice(0, 13)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-500">
+                  <span>
+                    {new Date(job.startedAt).toLocaleTimeString("zh-TW")}
+                  </span>
+                  {job.finishedAt && (
+                    <span>
+                      (
+                      {Math.round(
+                        (new Date(job.finishedAt).getTime() -
+                          new Date(job.startedAt).getTime()) /
+                          1000
+                      )}
+                      s)
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Log Viewer */}
+      {selectedJob && (
+        <div className="mb-4">
+          <p className="text-[10px] text-slate-500 mb-2">
+            📋 Job Logs:{" "}
+            <span className="font-mono">{selectedJob.slice(0, 13)}</span>
+          </p>
+          <JobLogViewer jobId={selectedJob} />
         </div>
       )}
 
