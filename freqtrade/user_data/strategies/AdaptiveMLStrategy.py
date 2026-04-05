@@ -312,47 +312,52 @@ class AdaptiveMLStrategy(IStrategy):
         if self._best_params and str(regime) in self._best_params:
             return self._best_params[str(regime)]
 
-        # Defaults calibrated from ML optimizer on 45K+ trades
+        # Defaults calibrated from ML optimizer output.
+        # Updated to match best_params.json reality.
         defaults = {
             0: {
-                "c": 0.62, "e": -0.05,
-                "roi_table": {"0": 0.0152, "30": 0.010, "60": 0.006, "120": 0.003},
-                "sl": -0.0066,
-                "trailing_offset": 0.0076,
+                "c": 0.115, "e": 0.05,
+                "roi_table": {"0": 0.0043, "30": 0.00347, "120": 0.00347},
+                "sl": -0.005,
+                "trailing_offset": 0.003,
                 "strategy": "A31",
                 "entry_adj": 1.0, "size_adj": 1.0,
                 "best_session": None, "worst_session": None,
                 "direction_bias": "neutral", "bias_strength": 0.0,
+                "trail_start": 0.0103, "trail_step": 0.0052,
             },
             1: {
-                "c": 0.10, "e": -0.03,
-                "roi_table": {"0": 0.0151, "30": 0.008, "60": 0.004, "120": 0.002},
-                "sl": -0.0089,
-                "trailing_offset": 0.0,
-                "strategy": "OPT",
-                "entry_adj": 1.0, "size_adj": 1.0,
-                "best_session": None, "worst_session": None,
-                "direction_bias": "neutral", "bias_strength": 0.0,
-            },
-            2: {
-                "c": 0.11, "e": 0.00,
-                "roi_table": {"0": 0.005, "30": 0.004, "60": 0.003, "120": 0.002},
+                "c": 0.10, "e": 0.0,
+                "roi_table": {"0": 0.00227, "30": 0.0021, "120": 0.0021},
                 "sl": -0.005,
                 "trailing_offset": 0.0,
                 "strategy": "A51",
                 "entry_adj": 1.0, "size_adj": 1.0,
                 "best_session": None, "worst_session": None,
                 "direction_bias": "neutral", "bias_strength": 0.0,
+                "trail_start": 0.0055, "trail_step": 0.0027,
             },
-            3: {
-                "c": 0.27, "e": -0.10,
-                "roi_table": {"0": 0.016, "30": 0.010, "60": 0.006, "120": 0.003},
-                "sl": -0.012,
-                "trailing_offset": 0.008,
-                "strategy": "A31",
+            2: {
+                "c": 0.17, "e": -0.18,
+                "roi_table": {"0": 0.00402, "30": 0.00402, "120": 0.00402},
+                "sl": -0.0064,
+                "trailing_offset": 0.0,
+                "strategy": "A52",
                 "entry_adj": 1.0, "size_adj": 1.0,
                 "best_session": None, "worst_session": None,
                 "direction_bias": "neutral", "bias_strength": 0.0,
+                "trail_start": 0.009, "trail_step": 0.0045,
+            },
+            3: {
+                "c": 0.10, "e": 0.115,
+                "roi_table": {"0": 0.0041, "30": 0.0035, "120": 0.0035},
+                "sl": -0.0058,
+                "trailing_offset": 0.0,
+                "strategy": "A52",
+                "entry_adj": 1.0, "size_adj": 1.0,
+                "best_session": None, "worst_session": None,
+                "direction_bias": "neutral", "bias_strength": 0.0,
+                "trail_start": 0.0063, "trail_step": 0.0032,
             },
         }
         return defaults.get(regime, defaults[2])
@@ -727,11 +732,6 @@ class AdaptiveMLStrategy(IStrategy):
                 # Apply size_adj from performance feedback
                 size_adj = params.get("size_adj", 1.0)
                 c = c * size_adj
-
-                # Regime 1 (TRENDING_DOWN): reduce long
-                # size but let shorts trade normal
-                if regime == 1 and side == "long":
-                    c = 0.10
 
                 # PRO: Not robust in walk-forward → reduce
                 if not params.get("is_robust", True):

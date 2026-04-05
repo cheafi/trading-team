@@ -35,6 +35,7 @@ for STRATEGY in "${STRATEGIES[@]}"; do
         --timerange "$TIMERANGE" \
         --timeframe 5m \
         --enable-protections \
+        --export trades \
         || echo "⚠️  $STRATEGY backtest failed"
     
     echo ""

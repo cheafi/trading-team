@@ -983,7 +983,6 @@ def compute_fee_aware_edge(scores):
         return {"has_edge": False, "net_edge": 0, "min_trades": 0}
 
     exp = scores.get("expectancy", 0)
-    wr = scores.get("win_rate", 0)
     n = scores.get("trade_count", 0)
 
     # Gross edge (before fees included in backtest)
@@ -999,7 +998,6 @@ def compute_fee_aware_edge(scores):
 
     has_edge = (
         net_edge > 0
-        and wr > 0.45
         and is_significant
     )
 

@@ -7,7 +7,7 @@
 | Service | Port | Role |
 |---|---|---|
 | `freqtrade` | 8080 | Python trading engine — backtesting + live execution |
-| `agent-runner` | 3001 | Node.js coordinator — 6 cron-scheduled AI agents |
+| `agent-runner` | 3001 | Node.js coordinator — 7 cron-scheduled AI agents |
 | `dashboard` | 3000 | Next.js control panel — consumes agent API |
 | `redis` | 6379 | Shared state bus between all services |
 
@@ -15,11 +15,13 @@ The **AdaptiveMLStrategy** (`freqtrade/user_data/strategies/AdaptiveMLStrategy.p
 
 ## Regime → Strategy Mapping (critical)
 
+**Only R2 (RANGING) short trades are active.** R0/R1/R3 are disabled — they produce more SL losses than ROI wins.
+
 ```
-R0 TRENDING_UP   → A31 (volatility squeeze) + A52 fallback
-R1 TRENDING_DOWN → A51 (VWAP scalp)        + A52 fallback
-R2 RANGING       → A51 (VWAP scalp)        + A52 fallback
-R3 VOLATILE      → A31 (squeeze)           + no fallback
+R0 TRENDING_UP   → DISABLED (fallback: A31)
+R1 TRENDING_DOWN → DISABLED (fallback: A51)
+R2 RANGING       → A52 (short only) ← THE ONLY ACTIVE REGIME
+R3 VOLATILE      → DISABLED (fallback: A52)
 ```
 
 The regime model is trained by `ml_optimizer.py` and persisted in `ml_models/regime_model.pkl`. AdaptiveMLStrategy hot-reloads `ml_models/best_params.json` on each candle — **never hard-code strategy params in the strategy file itself**.
@@ -28,8 +30,8 @@ The regime model is trained by `ml_optimizer.py` and persisted in `ml_models/reg
 
 ```
 backtest_results/*.json → ml_optimizer.py → ml_models/
-    ├── regime_model.pkl      (RandomForest regime classifier)
-    ├── quality_model.pkl     (XGBoost trade quality gate 0-100)
+    ├── regime_model.pkl      (GradientBoosting regime classifier)
+    ├── quality_model.pkl     (GradientBoosting trade quality gate)
     ├── best_params.json      (per-regime: c, e, sl, roi_table, kelly_fraction)
     ├── discipline_params.json (cooldown, daily loss limit)
     └── anti_patterns.json    (toxic hours/days learned from losses)
@@ -48,7 +50,7 @@ backtest_results/*.json → ml_optimizer.py → ml_models/
 
 # Single strategy backtest
 docker compose run --rm freqtrade backtesting \
-  --config /freqtrade/config/config.json \
+  --config /freqtrade/config/config_backtest.json \
   --strategy AdaptiveMLStrategy \
   --strategy-path /freqtrade/user_data/strategies \
   --timerange 20240101-20241231 --timeframe 5m
@@ -82,6 +84,7 @@ curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit
 | market-analyst | `*/10 * * * *` | ETH macro + volume analysis |
 | backtester | `0 */2 * * *` | Auto backtest on new data |
 | ml-optimizer | `0 */2 * * *` | Retrain models, update best_params |
+| security-auditor | `0 */6 * * *` | FT version, health, pair locks |
 
 ## Key Files
 

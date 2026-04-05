@@ -201,8 +201,8 @@ async function runRiskManager(agent) {
 
   const totalValue = balance?.total || 0;
   const openTrades = status?.length || 0;
-  const drawdown = profit?.max_drawdown || 0;
-  const drawdownPct = (profit?.max_drawdown || 0) * 100;
+  const ddRaw = profit?.max_drawdown ?? 0;
+  const drawdownPct = ddRaw > 1 ? ddRaw : ddRaw * 100;
 
   const alerts = [];
   if (drawdownPct > 15) alerts.push(`⚠️ DD ${drawdownPct.toFixed(1)}% > 15% threshold`);
@@ -220,7 +220,6 @@ async function runRiskManager(agent) {
     data: {
       totalValue,
       openTrades,
-      drawdown,
       drawdownPct,
       riskLevel,
       alerts,
@@ -347,7 +346,8 @@ async function runMLOptimizer(agent) {
   const winRate = profit?.trade_count > 0
     ? ((profit?.winning_trades || 0) / profit.trade_count)
     : 0;
-  const maxDD = (profit?.max_drawdown || 0) * 100;
+  const maxDDRaw = profit?.max_drawdown ?? 0;
+  const maxDD = maxDDRaw > 1 ? maxDDRaw : maxDDRaw * 100;
   const totalProfit = profit?.profit_all_coin || 0;
 
   // 2. Read current ML model params (if they exist)

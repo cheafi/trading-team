@@ -17,6 +17,8 @@ let client = null;
 let tradingChannel = null;
 let digestInterval = null;
 
+const API_KEY = process.env.ML_TRAIN_API_KEY || "";
+
 // === Helpers ===
 async function api(path) {
   try { const r = await fetch(`${API_BASE}${path}`); return r.ok ? r.json() : null; }
@@ -24,8 +26,10 @@ async function api(path) {
 }
 async function apiPost(path, body = {}) {
   try {
+    const headers = { "Content-Type": "application/json" };
+    if (API_KEY) headers["X-API-Key"] = API_KEY;
     const r = await fetch(`${API_BASE}${path}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers,
       body: JSON.stringify(body),
     });
     return r.json();
@@ -39,7 +43,7 @@ function pad(s, w, a = "r") { const t = String(s); return t.length >= w ? t.slic
 function riskEmoji(l) { return { CRITICAL: "\ud83d\udd34", HIGH: "\ud83d\udfe0", MEDIUM: "\ud83d\udfe1", LOW: "\ud83d\udfe2" }[l] || "\u26aa"; }
 function timeAgo(iso) { return iso ? `<t:${Math.floor(new Date(iso).getTime() / 1000)}:R>` : "\u2014"; }
 
-function getDDPct(p) { return Math.min((p?.max_drawdown ?? 0) * 100, 100); }
+function getDDPct(p) { const raw = p?.max_drawdown ?? 0; return Math.min(raw > 1 ? raw : raw * 100, 100); }
 function getWR(p) {
   if (p?.winrate != null) return (p.winrate * 100).toFixed(1);
   const t = p?.trade_count ?? 0, w = p?.winning_trades ?? 0;
@@ -354,7 +358,7 @@ async function cmdConfig(msg) {
       { name: "Strategy",   value: `\`${ml?.strategy||"\u2014"}\``,  inline: true },
       { name: "Regime",     value: `\`${ml?.regime||"\u2014"}\``,    inline: true },
       { name: "Timeframe",  value: "`5m`",                       inline: true },
-      { name: "Max Trades", value: "`6`",                        inline: true },
+      { name: "Max Trades", value: "`4`",                        inline: true },
       { name: "Mode",       value: "`Futures / Isolated`",       inline: true },
       { name: "Direction",  value: "`R2 Short Only`",            inline: true },
     ).setFooter({ text: "Cheafi \ud83d\udc3c" }).setTimestamp();

@@ -8,8 +8,8 @@ export function AgentGrid() {
 
   if (!agents || agents.length === 0) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+        {Array.from({ length: 7 }).map((_, i) => (
           <div
             key={i}
             className="bg-[#1a2332] rounded-xl border border-slate-800 p-4 animate-pulse h-32"
@@ -20,7 +20,7 @@ export function AgentGrid() {
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
       {agents.map((agent) => (
         <div
           key={agent.id}
