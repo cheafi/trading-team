@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CC — ETH/USDT 5m Short Specialist</title>
-  <meta name="description" content="Autonomous AI trading team for ETH/USDT Futures on Binance. 7 cron-scheduled agents, ML-optimized strategy selection, real-time dashboard.">
+  <title>CC — USDT Futures 5m Short Specialist</title>
+  <meta name="description" content="Autonomous AI trading team for USDT Futures on Binance. 6 pairs, 7 cron-scheduled agents, ML-optimized strategy selection, real-time dashboard.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐼</text></svg>">
   <style>
     :root {
@@ -369,7 +369,7 @@
 <header class="hero">
   <h1>🐼 CC</h1>
   <p class="subtitle">
-    ETH/USDT 5m R2 Short Specialist — research / paper-trading stage.
+    USDT Futures 5m R2 Short Specialist — 6 pairs — research / paper-trading stage.
     7 autonomous agents. ML-informed regime detection. Professional risk management.
   </p>
   <div class="badges">
@@ -691,7 +691,7 @@
 <span class="comment"># Download historical data first (if needed)</span>
 <span class="cmd">docker compose run --rm freqtrade download-data \
   --config /freqtrade/config/config.json \
-  --pairs ETH/USDT:USDT \
+  --pairs ETH/USDT:USDT BTC/USDT:USDT SOL/USDT:USDT BNB/USDT:USDT XRP/USDT:USDT DOGE/USDT:USDT \
   --timeframes 5m 15m 1h \
   --timerange 20240101-20260101</span>
 

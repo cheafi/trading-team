@@ -2,7 +2,7 @@
 
 ## System Identity (be honest)
 
-**CC** is currently an **ETH/USDT 5m R2 short specialist** — a single-pair, single-regime trading bot in research/paper-trading stage.
+**CC** is currently a **USDT Futures 5m R2 short specialist** — a multi-pair, single-regime trading bot in research/paper-trading stage. It trades 6 pairs: ETH, BTC, SOL, BNB, XRP, DOGE.
 
 The multi-regime infrastructure exists but only R2 (RANGING, short-only) is active in production. Do NOT describe this system as a "multi-regime adaptive engine" unless other regimes are re-enabled in `populate_entry_trend()`.
 
@@ -74,6 +74,7 @@ curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit
 ## Project Conventions
 
 - **Futures only, never spot.** Pairs must use `:USDT` suffix: `ETH/USDT:USDT`.
+- **6 pairs whitelisted:** ETH, BTC, SOL, BNB, XRP, DOGE — all via `StaticPairList`.
 - **`can_short = True` is required** in AdaptiveMLStrategy. Reverting this disables all short trades.
 - **5m primary + 15m + 1h confirmation timeframe.** `startup_candle_count = 200` is mandatory.
 - Agent coordinator is **ESM (`"type": "module"`)** — use `.mjs` extension and `import`/`export`, not `require()`.

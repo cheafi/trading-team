@@ -27,7 +27,7 @@ export function TeamHeader() {
             CC
           </h1>
           <p className="text-sm text-slate-400">
-            ETH/USDT:USDT • 5m R2 Short Specialist • Paper Trading
+            USDT Futures • 5m R2 Short Specialist • Paper Trading
           </p>
         </div>
       </div>

@@ -1,6 +1,7 @@
-# 🐼 CC — ETH/USDT 5m Short Specialist
+# 🐼 CC — USDT Futures 5m Short Specialist
 
-> Multi-agent algo trading platform for ETH/USDT Futures on Binance.
+> Multi-agent algo trading platform for USDT Futures on Binance.
+> Trades 6 pairs: ETH, BTC, SOL, BNB, XRP, DOGE.
 > Currently running **one active regime** (R2 RANGING, short-only).
 > Research / paper-trading stage — not production capital.
 
@@ -74,7 +75,7 @@ docker compose logs -f
 | **R2** | **RANGING** | **A52 (Momentum)** | **SHORT only** | ✅ Active |
 | R3 | VOLATILE | A52 (Momentum) | — | ⛔ Disabled |
 
-This means the bot is currently an **ETH/USDT 5m R2 short specialist**, not a multi-regime adaptive engine. The multi-regime infrastructure exists and is under research, but only R2 short has demonstrated a viable edge.
+This means the bot is currently a **USDT Futures 5m R2 short specialist** trading 6 pairs, not a multi-regime adaptive engine. The multi-regime infrastructure exists and is under research, but only R2 short has demonstrated a viable edge.
 
 ## 📊 Sub-Strategies
 
@@ -179,4 +180,4 @@ trading-team/
 
 ---
 
-**CC** — a well-instrumented ETH 5m specialist under active research 🐼
+**CC** — a well-instrumented USDT Futures 5m specialist under active research 🐼

@@ -2,10 +2,10 @@
 
 ## Current Identity (2026-04-06)
 
-**ETH/USDT 5m R2 Short Specialist** — research / paper-trading stage.
+**USDT Futures 5m R2 Short Specialist** — 6 pairs (ETH, BTC, SOL, BNB, XRP, DOGE) — research / paper-trading stage.
 
 ### What the system actually does
-- Trades ETH/USDT:USDT on Binance Futures (isolated margin)
+- Trades 6 pairs on Binance Futures via StaticPairList (isolated margin)
 - Only R2 (RANGING) short entries are active — other regimes disabled
 - Uses A52 (multi-factor momentum) as primary sub-strategy
 - Rule-based regime detection (ADX/EMA/ATR/BB thresholds)
@@ -19,7 +19,6 @@
 - Multi-regime live trading (R0/R1/R3 disabled)
 - Real-time ML regime classification (trained model exists but unused)
 - Deep trade quality intelligence (model uses only hour/weekday/side)
-- Multi-pair trading (only ETH/USDT:USDT whitelisted)
 - Auto-download fresh data + rebacktest + retrain pipeline
 - The scheduled "ML optimizer" agent refreshes state, does NOT retrain
 

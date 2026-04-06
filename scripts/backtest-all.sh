@@ -14,10 +14,11 @@ echo "Timerange: $TIMERANGE"
 echo ""
 
 # Download data first
-echo "📥 Downloading ETH/USDT 5m + 15m + 1h data..."
+PAIRS="ETH/USDT:USDT BTC/USDT:USDT SOL/USDT:USDT BNB/USDT:USDT XRP/USDT:USDT DOGE/USDT:USDT"
+echo "📥 Downloading data for 6 pairs (5m + 15m + 1h)..."
 docker compose run --rm freqtrade download-data \
     --config /freqtrade/config/config_backtest.json \
-    --pairs ETH/USDT:USDT \
+    --pairs $PAIRS \
     --timeframes 5m 15m 1h \
     --timerange "$TIMERANGE"
 

@@ -44,9 +44,10 @@ echo ""
 
 # ─── Step 1: Download data ─────────────────────────────────────
 echo "📥 Step 1/4: Downloading market data..."
+PAIRS="ETH/USDT:USDT BTC/USDT:USDT SOL/USDT:USDT BNB/USDT:USDT XRP/USDT:USDT DOGE/USDT:USDT"
 docker compose run --rm freqtrade download-data \
     --config /freqtrade/config/config.json \
-    --pairs ETH/USDT:USDT \
+    --pairs $PAIRS \
     --timeframes 5m 15m 1h \
     --timerange "$TIMERANGE" \
     2>&1 | tail -5

@@ -1,5 +1,5 @@
 """
-AdaptiveML v3 PRO — ETH/USDT 5m R2 Short Specialist
+AdaptiveML v3 PRO — USDT Futures 5m R2 Short Specialist
 ====================================================
 Currently a single-regime specialist (R2 RANGING, short-only).
 Other regimes (R0/R1/R3) are disabled — they produce more
@@ -75,7 +75,7 @@ SESSION_HOURS = {
 
 class AdaptiveMLStrategy(IStrategy):
     """
-    ETH/USDT 5m R2 Short Specialist
+    USDT Futures 5m R2 Short Specialist (6 pairs)
     Currently runs one active regime (R2 RANGING, short-only).
     Uses Kelly sizing, MFE-calibrated exits, and discipline systems.
     """
