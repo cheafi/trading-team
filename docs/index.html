@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cheafi — Multi-Agent Algo Trading Platform</title>
+  <meta name="description" content="Autonomous AI trading team for ETH/USDT Futures on Binance. 7 cron-scheduled agents, ML-optimized strategy selection, real-time dashboard.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐼</text></svg>">
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --card: #1a2332;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --green: #10b981;
+      --red: #ef4444;
+      --orange: #f59e0b;
+      --purple: #8b5cf6;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: #111827;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 80px 20px 60px;
+      background: linear-gradient(135deg, #0a0e17 0%, #111827 50%, #0a0e17 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero .subtitle {
+      font-size: 1.2rem;
+      color: var(--muted);
+      max-width: 600px;
+      margin: 0 auto 32px;
+    }
+    .hero .badges {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px;
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--card);
+    }
+    .badge.green { color: var(--green); border-color: #10b98133; }
+    .badge.blue { color: var(--accent); border-color: #3b82f633; }
+    .badge.purple { color: var(--purple); border-color: #8b5cf633; }
+    .badge.orange { color: var(--orange); border-color: #f59e0b33; }
+    .cta-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { background: #2563eb; text-decoration: none; }
+    .btn-secondary {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+
+    /* Section */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+    section { padding: 60px 0; }
+    section h2 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+
+    /* Architecture */
+    .arch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .arch-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: border-color 0.2s;
+    }
+    .arch-card:hover { border-color: var(--accent); }
+    .arch-card .icon { font-size: 2rem; margin-bottom: 12px; }
+    .arch-card h3 { font-size: 1.1rem; margin-bottom: 4px; }
+    .arch-card .port { color: var(--muted); font-size: 0.8rem; margin-bottom: 8px; }
+    .arch-card p { color: var(--muted); font-size: 0.85rem; }
+
+    /* Agent Grid */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .agent-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .agent-card .emoji { font-size: 1.6rem; }
+    .agent-card h4 { font-size: 0.85rem; margin-bottom: 2px; }
+    .agent-card .schedule { font-size: 0.7rem; color: var(--muted); }
+
+    /* Strategy */
+    .strat-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .strat-table th, .strat-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .strat-table th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .strat-table tr:hover td { background: #111827; }
+    .strat-table .active { color: var(--green); font-weight: 600; }
+    .strat-table .disabled { color: #475569; }
+
+    /* ML Pipeline */
+    .pipeline {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+    .pipeline .arrow { color: var(--accent); }
+    .pipeline .file { color: var(--green); }
+    .pipeline .comment { color: #475569; }
+
+    /* Tech Stack */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .tech-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+    .tech-item .tech-emoji { font-size: 1.5rem; margin-bottom: 6px; }
+    .tech-item h4 { font-size: 0.85rem; margin-bottom: 2px; }
+    .tech-item p { font-size: 0.7rem; color: var(--muted); }
+
+    /* Risk Rules */
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .risk-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .risk-card .value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .risk-card .label { color: var(--muted); font-size: 0.8rem; }
+    .risk-card.red .value { color: var(--red); }
+    .risk-card.orange .value { color: var(--orange); }
+    .risk-card.green .value { color: var(--green); }
+    .risk-card.blue .value { color: var(--accent); }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    /* Quick Start */
+    .quickstart {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 16px;
+    }
+    .quickstart pre {
+      background: #111827;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      line-height: 1.7;
+    }
+    .quickstart pre .comment { color: #475569; }
+    .quickstart pre .cmd { color: var(--green); }
+  </style>
+</head>
+<body>
+
+<!-- Hero -->
+<header class="hero">
+  <h1>🐼 Cheafi</h1>
+  <p class="subtitle">
+    Multi-Agent Algo Trading Platform for ETH/USDT Futures.
+    7 autonomous AI agents. ML-optimized regime detection. Professional risk management.
+  </p>
+  <div class="badges">
+    <span class="badge green">✅ Futures Only</span>
+    <span class="badge blue">🤖 7 AI Agents</span>
+    <span class="badge purple">🧠 ML Pipeline</span>
+    <span class="badge orange">⚡ 5m Timeframe</span>
+  </div>
+  <div class="cta-row">
+    <a href="https://github.com/cheafi/trading-team" class="btn btn-primary">
+      ⭐ View on GitHub
+    </a>
+    <a href="#quickstart" class="btn btn-secondary">
+      🚀 Quick Start
+    </a>
+  </div>
+</header>
+
+<!-- Architecture -->
+<section>
+  <div class="container">
+    <h2>🏗️ Architecture</h2>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <div class="icon">📊</div>
+        <h3>Freqtrade</h3>
+        <div class="port">Port 8080</div>
+        <p>Python trading engine for backtesting and live execution. Runs AdaptiveMLStrategy with hot-reloaded ML params.</p>
+      </div>
+      <div class="arch-card">
+        <div class="icon">🤖</div>
+        <h3>Agent Runner</h3>
+        <div class="port">Port 3001</div>
+        <p>Node.js coordinator orchestrating 7 cron-scheduled AI agents. REST API + Redis pub/sub.</p>
+      </div>
+      <div class="arch-card">
+        <div class="icon">🖥️</div>
+        <h3>Dashboard</h3>
+        <div class="port">Port 3000</div>
+        <p>Next.js App Router control panel. Real-time P&L, risk gauge, agent status, ML training monitor.</p>
+      </div>
+      <div class="arch-card">
+        <div class="icon">🧠</div>
+        <h3>Redis</h3>
+        <div class="port">Port 6379</div>
+        <p>Shared state bus. Agent findings, risk alerts, ML job logs — all flow through Redis.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Agents -->
+<section style="background: #111827;">
+  <div class="container">
+    <h2>🤖 Agent Team</h2>
+    <div class="agent-grid">
+      <div class="agent-card">
+        <span class="emoji">🛡️</span>
+        <div>
+          <h4>Risk Manager (CRO)</h4>
+          <div class="schedule">Every 5 min · DD monitoring, halt if &gt; 20%</div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="emoji">📡</span>
+        <div>
+          <h4>Signal Engineer</h4>
+          <div class="schedule">Every 5 min · Regime detection, entry signals</div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="emoji">🔬</span>
+        <div>
+          <h4>Quant Researcher</h4>
+          <div class="schedule">Every 15 min · Trade performance analysis</div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="emoji">🌍</span>
+        <div>
+          <h4>Market Analyst</h4>
+          <div class="schedule">Every 10 min · ETH macro + volume analysis</div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="emoji">📊</span>
+        <div>
+          <h4>Backtester</h4>
+          <div class="schedule">Every 2 hours · Auto backtest on new data</div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="emoji">🧠</span>
+        <div>
+          <h4>ML Optimizer</h4>
+          <div class="schedule">Every 2 hours · Retrain models, update params</div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="emoji">🔒</span>
+        <div>
+          <h4>Security Auditor</h4>
+          <div class="schedule">Every 6 hours · FT version, health, pair locks</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Strategy -->
+<section>
+  <div class="container">
+    <h2>📈 Regime → Strategy Mapping</h2>
+    <p style="text-align:center;color:var(--muted);margin-bottom:24px;">
+      Only R2 (RANGING) short trades are active — proven profitable. R0/R1/R3 disabled after data analysis.
+    </p>
+    <div style="overflow-x:auto;">
+      <table class="strat-table">
+        <thead>
+          <tr>
+            <th>Regime</th>
+            <th>Name</th>
+            <th>Strategy</th>
+            <th>Direction</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>R0</td>
+            <td>TRENDING UP</td>
+            <td class="disabled">A31 (Squeeze)</td>
+            <td class="disabled">—</td>
+            <td class="disabled">⛔ Disabled</td>
+          </tr>
+          <tr>
+            <td>R1</td>
+            <td>TRENDING DOWN</td>
+            <td class="disabled">A51 (VWAP)</td>
+            <td class="disabled">—</td>
+            <td class="disabled">⛔ Disabled</td>
+          </tr>
+          <tr style="background:#10b98110;">
+            <td><strong>R2</strong></td>
+            <td><strong>RANGING</strong></td>
+            <td class="active">A52 (Momentum)</td>
+            <td class="active">SHORT only</td>
+            <td class="active">✅ Active</td>
+          </tr>
+          <tr>
+            <td>R3</td>
+            <td>VOLATILE</td>
+            <td class="disabled">A52 (Momentum)</td>
+            <td class="disabled">—</td>
+            <td class="disabled">⛔ Disabled</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ML Pipeline -->
+<section style="background: #111827;">
+  <div class="container">
+    <h2>🧠 ML Pipeline</h2>
+    <div class="pipeline">
+      <span class="file">backtest_results/*.json</span> <span class="arrow">→</span> <span class="file">ml_optimizer.py</span> <span class="arrow">→</span> <span class="file">ml_models/</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">regime_model.pkl</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">// GradientBoosting regime classifier</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">quality_model.pkl</span> &nbsp;&nbsp;&nbsp;<span class="comment">// GradientBoosting trade quality gate</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">best_params.json</span> &nbsp;&nbsp;&nbsp;<span class="comment">// per-regime: c, e, sl, roi_table, kelly</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">discipline_params.json</span> <span class="comment">// cooldown, daily loss limit</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="file">anti_patterns.json</span> &nbsp;<span class="comment">// toxic hours/days from loss analysis</span><br>
+      <br>
+      <span class="comment">// PRO features: Kelly Criterion sizing, MFE-calibrated stops,</span><br>
+      <span class="comment">// walk-forward validation, Monte Carlo simulation, equity curve analysis</span>
+    </div>
+  </div>
+</section>
+
+<!-- Risk Rules -->
+<section>
+  <div class="container">
+    <h2>🛡️ Risk Envelope</h2>
+    <div class="risk-grid">
+      <div class="risk-card red">
+        <div class="value">20%</div>
+        <div class="label">Emergency halt drawdown</div>
+      </div>
+      <div class="risk-card orange">
+        <div class="value">15%</div>
+        <div class="label">Alert drawdown threshold</div>
+      </div>
+      <div class="risk-card blue">
+        <div class="value">4</div>
+        <div class="label">Max open positions</div>
+      </div>
+      <div class="risk-card green">
+        <div class="value">2×</div>
+        <div class="label">Min edge vs round-trip fees</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Tech Stack -->
+<section style="background: #111827;">
+  <div class="container">
+    <h2>⚙️ Tech Stack</h2>
+    <div class="tech-grid">
+      <div class="tech-item">
+        <div class="tech-emoji">🐍</div>
+        <h4>Python</h4>
+        <p>Freqtrade + ML</p>
+      </div>
+      <div class="tech-item">
+        <div class="tech-emoji">🟢</div>
+        <h4>Node.js</h4>
+        <p>Agent Coordinator</p>
+      </div>
+      <div class="tech-item">
+        <div class="tech-emoji">⚛️</div>
+        <h4>Next.js</h4>
+        <p>Dashboard UI</p>
+      </div>
+      <div class="tech-item">
+        <div class="tech-emoji">🗄️</div>
+        <h4>Redis</h4>
+        <p>State Bus</p>
+      </div>
+      <div class="tech-item">
+        <div class="tech-emoji">🐳</div>
+        <h4>Docker</h4>
+        <p>Compose Stack</p>
+      </div>
+      <div class="tech-item">
+        <div class="tech-emoji">🤖</div>
+        <h4>Discord</h4>
+        <p>Bot Integration</p>
+      </div>
+      <div class="tech-item">
+        <div class="tech-emoji">📊</div>
+        <h4>scikit-learn</h4>
+        <p>ML Models</p>
+      </div>
+      <div class="tech-item">
+        <div class="tech-emoji">📈</div>
+        <h4>TA-Lib</h4>
+        <p>Technical Analysis</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Start -->
+<section id="quickstart">
+  <div class="container">
+    <h2>🚀 Quick Start</h2>
+    <div class="quickstart">
+      <pre><span class="comment"># Clone and configure</span>
+<span class="cmd">git clone https://github.com/cheafi/trading-team.git</span>
+<span class="cmd">cd trading-team</span>
+<span class="cmd">cp .env.example .env</span>    <span class="comment"># fill in your keys</span>
+
+<span class="comment"># Start full stack (dry_run mode by default)</span>
+<span class="cmd">docker compose up -d</span>
+
+<span class="comment"># Open dashboard</span>
+<span class="cmd">open http://localhost:3000</span>
+
+<span class="comment"># Backtest all strategies</span>
+<span class="cmd">./scripts/backtest-all.sh 20240101-20260101</span>
+
+<span class="comment"># Retrain ML models</span>
+<span class="cmd">curl -X POST http://localhost:3001/api/ml/train</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <p>
+    🐼 Cheafi Trading Team · Built with
+    <a href="https://www.freqtrade.io/">Freqtrade</a>,
+    <a href="https://nextjs.org/">Next.js</a>,
+    <a href="https://redis.io/">Redis</a>
+  </p>
+  <p style="margin-top:8px;">
+    <a href="https://github.com/cheafi/trading-team">GitHub</a> ·
+    <code>dry_run: true</code> by default — trade responsibly
+  </p>
+</footer>
+
+</body>
+</html>
