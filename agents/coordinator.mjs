@@ -122,9 +122,9 @@ const agents = [
   },
   {
     id: "ml-optimizer",
-    name: "ML 優化師",
+    name: "ML 狀態監視",
     emoji: "🧠",
-    schedule: "0 */2 * * *", // every 2 hours — retrain from latest data
+    schedule: "0 */2 * * *", // every 2 hours — refresh ML state (does NOT retrain)
     status: "idle",
     lastRun: null,
     findings: [],
@@ -170,18 +170,24 @@ async function runBacktester(agent) {
   // Pull pair performance from the running bot
   // Note: /performance returns per-pair stats, not per-strategy
   const performance = await ftApi("/performance");
-  const strategies = ["A52Strategy", "OPTStrategy", "A51Strategy", "A31Strategy"];
+  const strategies = [
+    "A52Strategy",
+    "OPTStrategy",
+    "A51Strategy",
+    "A31Strategy",
+  ];
 
   const finding = {
     timestamp: new Date().toISOString(),
     agent: agent.id,
     type: "backtest-review",
     data: {
-      pairPerformance: performance?.slice(0, 10)?.map((p) => ({
-        pair: p.pair,
-        profit: p.profit,
-        count: p.count,
-      })) || [],
+      pairPerformance:
+        performance?.slice(0, 10)?.map((p) => ({
+          pair: p.pair,
+          profit: p.profit,
+          count: p.count,
+        })) || [],
       monitoredStrategies: strategies,
     },
     summary: `${strategies.length} strategies monitored | ${performance?.length || 0} pairs tracked`,
@@ -205,13 +211,18 @@ async function runRiskManager(agent) {
   const drawdownPct = ddRaw > 1 ? ddRaw : ddRaw * 100;
 
   const alerts = [];
-  if (drawdownPct > 15) alerts.push(`⚠️ DD ${drawdownPct.toFixed(1)}% > 15% threshold`);
+  if (drawdownPct > 15)
+    alerts.push(`⚠️ DD ${drawdownPct.toFixed(1)}% > 15% threshold`);
   if (openTrades > 4) alerts.push(`⚠️ ${openTrades} open positions (max: 4)`);
 
   const riskLevel =
-    drawdownPct > 20 ? "CRITICAL" :
-    drawdownPct > 15 ? "HIGH" :
-    drawdownPct > 10 ? "MEDIUM" : "LOW";
+    drawdownPct > 20
+      ? "CRITICAL"
+      : drawdownPct > 15
+        ? "HIGH"
+        : drawdownPct > 10
+          ? "MEDIUM"
+          : "LOW";
 
   const finding = {
     timestamp: new Date().toISOString(),
@@ -232,12 +243,17 @@ async function runRiskManager(agent) {
 
   // Publish risk alerts to Redis for real-time dashboard
   if (alerts.length > 0) {
-    await redis.publish("trading:alerts", JSON.stringify({ alerts, riskLevel }));
+    await redis.publish(
+      "trading:alerts",
+      JSON.stringify({ alerts, riskLevel }),
+    );
   }
 
   // Send risk alert to Discord if HIGH or CRITICAL
   if (riskLevel === "HIGH" || riskLevel === "CRITICAL") {
-    discord.sendRiskAlert({ riskLevel, drawdownPct: drawdownPct, alerts }).catch(() => {});
+    discord
+      .sendRiskAlert({ riskLevel, drawdownPct: drawdownPct, alerts })
+      .catch(() => {});
   }
 
   return finding;
@@ -254,14 +270,15 @@ async function runSignalEngineer(agent) {
     agent: agent.id,
     type: "signal-report",
     data: {
-      activeSignals: status?.map((t) => ({
-        pair: t.pair,
-        direction: t.is_short ? "SHORT" : "LONG",
-        profit: t.profit_pct,
-        duration: t.trade_duration,
-        strategy: t.strategy,
-        entryTag: t.enter_tag,
-      })) || [],
+      activeSignals:
+        status?.map((t) => ({
+          pair: t.pair,
+          direction: t.is_short ? "SHORT" : "LONG",
+          profit: t.profit_pct,
+          duration: t.trade_duration,
+          strategy: t.strategy,
+          entryTag: t.enter_tag,
+        })) || [],
       watchlist: whitelist?.whitelist || [],
     },
     summary: `${status?.length || 0} active signals | Watching ${whitelist?.whitelist?.length || 0} pairs`,
@@ -284,8 +301,11 @@ async function runMarketAnalyst(agent) {
   const shortTrades = status?.filter((t) => t.is_short)?.length || 0;
 
   const posture =
-    longTrades > shortTrades ? "NET_LONG" :
-    shortTrades > longTrades ? "NET_SHORT" : "FLAT";
+    longTrades > shortTrades
+      ? "NET_LONG"
+      : shortTrades > longTrades
+        ? "NET_SHORT"
+        : "FLAT";
 
   const finding = {
     timestamp: new Date().toISOString(),
@@ -336,16 +356,17 @@ async function runSecurityAuditor(agent) {
   return finding;
 }
 
-async function runMLOptimizer(agent) {
-  log.info(`[${agent.id}] Running ML optimization cycle...`);
+async function runMLStateRefresh(agent) {
+  log.info(`[${agent.id}] Refreshing ML state (read-only, no training)...`);
 
   // 1. Get current performance to evaluate if retraining is needed
   const profit = await ftApi("/profit");
   const performance = await ftApi("/performance");
 
-  const winRate = profit?.trade_count > 0
-    ? ((profit?.winning_trades || 0) / profit.trade_count)
-    : 0;
+  const winRate =
+    profit?.trade_count > 0
+      ? (profit?.winning_trades || 0) / profit.trade_count
+      : 0;
   const maxDDRaw = profit?.max_drawdown ?? 0;
   const maxDD = maxDDRaw > 1 ? maxDDRaw : maxDDRaw * 100;
   const totalProfit = profit?.profit_all_coin || 0;
@@ -376,14 +397,19 @@ async function runMLOptimizer(agent) {
   let improvementTrend = "stable";
   if (trainingLog.length >= 2) {
     const recent = trainingLog.slice(-5);
-    const scores = recent.map(entry => {
+    const scores = recent.map((entry) => {
       const strats = Object.values(entry.strategy_scores || {});
-      return strats.reduce((sum, s) => sum + (s.score || 0), 0) / (strats.length || 1);
+      return (
+        strats.reduce((sum, s) => sum + (s.score || 0), 0) /
+        (strats.length || 1)
+      );
     });
     const firstHalf = scores.slice(0, Math.floor(scores.length / 2));
     const secondHalf = scores.slice(Math.floor(scores.length / 2));
-    const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / (firstHalf.length || 1);
-    const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / (secondHalf.length || 1);
+    const avgFirst =
+      firstHalf.reduce((a, b) => a + b, 0) / (firstHalf.length || 1);
+    const avgSecond =
+      secondHalf.reduce((a, b) => a + b, 0) / (secondHalf.length || 1);
 
     if (avgSecond > avgFirst * 1.05) improvementTrend = "improving";
     else if (avgSecond < avgFirst * 0.95) improvementTrend = "degrading";
@@ -395,7 +421,12 @@ async function runMLOptimizer(agent) {
   let activeRegime = "unknown";
   let activeStrategy = "A52";
   if (currentParams) {
-    const regimeNames = { "0": "TRENDING_UP", "1": "TRENDING_DOWN", "2": "RANGING", "3": "VOLATILE" };
+    const regimeNames = {
+      0: "TRENDING_UP",
+      1: "TRENDING_DOWN",
+      2: "RANGING",
+      3: "VOLATILE",
+    };
     let bestScore = -Infinity;
     for (const [rid, params] of Object.entries(currentParams)) {
       const score = parseFloat(params.source_score || 0);
@@ -410,7 +441,7 @@ async function runMLOptimizer(agent) {
   const finding = {
     timestamp: new Date().toISOString(),
     agent: agent.id,
-    type: "ml-optimization",
+    type: "ml-state-refresh",
     data: {
       winRate: parseFloat(winRate.toFixed(4)),
       maxDD: parseFloat(maxDD.toFixed(2)),
@@ -420,34 +451,43 @@ async function runMLOptimizer(agent) {
       activeStrategy,
       improvementTrend,
       trainingRuns: trainingLog.length,
-      strategies: performance?.slice(0, 5).map(p => ({
-        pair: p.pair,
-        profit: p.profit,
-        count: p.count,
-      })) || [],
+      strategies:
+        performance?.slice(0, 5).map((p) => ({
+          pair: p.pair,
+          profit: p.profit,
+          count: p.count,
+        })) || [],
     },
     summary: `ML: regime=${activeRegime} strategy=${activeStrategy} WR=${(winRate * 100).toFixed(1)}% trend=${improvementTrend}`,
   };
 
   // 6. Publish ML state to Redis for dashboard
-  await redis.set("trading:ml:state", JSON.stringify({
-    regime: activeRegime,
-    strategy: activeStrategy,
-    winRate,
-    maxDD,
-    improvementTrend,
-    params: currentParams,
-    lastTrained: trainingLog.length > 0 ? trainingLog[trainingLog.length - 1].timestamp : null,
-    updatedAt: new Date().toISOString(),
-  }));
+  await redis.set(
+    "trading:ml:state",
+    JSON.stringify({
+      regime: activeRegime,
+      strategy: activeStrategy,
+      winRate,
+      maxDD,
+      improvementTrend,
+      params: currentParams,
+      lastTrained:
+        trainingLog.length > 0
+          ? trainingLog[trainingLog.length - 1].timestamp
+          : null,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
 
-  // 7. Notify Discord about ML state
-  discord.sendMLTrainingUpdate({
-    summary: finding.summary,
-    regime: activeRegime,
-    strategy: activeStrategy,
-    trend: improvementTrend,
-  }).catch(() => {});
+  // 7. Notify Discord about ML state (periodic refresh, NOT training)
+  discord
+    .sendMLStateUpdate({
+      summary: finding.summary,
+      regime: activeRegime,
+      strategy: activeStrategy,
+      trend: improvementTrend,
+    })
+    .catch(() => {});
 
   agent.findings.unshift(finding);
   agent.findings = agent.findings.slice(0, 50);
@@ -456,7 +496,8 @@ async function runMLOptimizer(agent) {
 
 // Spawn a background ML training job, stream logs to Redis, and persist job state.
 async function startTrainingJob(source = "api") {
-  const jobId = Date.now().toString() + "-" + Math.random().toString(36).slice(2, 8);
+  const jobId =
+    Date.now().toString() + "-" + Math.random().toString(36).slice(2, 8);
   const summaryKey = "trading:job:ml_training"; // current job summary
   const jobLogsKey = `trading:jobs:ml_training:logs:${jobId}`;
   const resultsKey = `trading:jobs:ml_training:results`;
@@ -466,7 +507,9 @@ async function startTrainingJob(source = "api") {
   const got = await redis.set(lockKey, jobId, "NX", "EX", 60 * 60); // 1h TTL
   if (!got) {
     const existing = await redis.get(lockKey);
-    throw new Error(`Another ML training job is running (${existing || 'unknown'})`);
+    throw new Error(
+      `Another ML training job is running (${existing || "unknown"})`,
+    );
   }
 
   // Prefer container-safe script (runs ml_optimizer.py directly)
@@ -485,11 +528,17 @@ async function startTrainingJob(source = "api") {
       args = ["-oL", "-eL", "bash", hostScript];
     } else {
       cmd = "sh";
-      args = ["-c", "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'"];
+      args = [
+        "-c",
+        "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'",
+      ];
     }
   } catch (e) {
     cmd = "sh";
-    args = ["-c", "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'"];
+    args = [
+      "-c",
+      "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'",
+    ];
   }
 
   let child;
@@ -522,7 +571,10 @@ async function startTrainingJob(source = "api") {
     try {
       await redis.lpush(jobLogsKey, line);
       await redis.ltrim(jobLogsKey, 0, 999);
-      await redis.publish("trading:jobs:ml_training", JSON.stringify({ jobId, line }));
+      await redis.publish(
+        "trading:jobs:ml_training",
+        JSON.stringify({ jobId, line }),
+      );
     } catch (e) {
       log.warn({ err: e }, "Failed to push training log to Redis");
     }
@@ -547,24 +599,51 @@ async function startTrainingJob(source = "api") {
       await redis.set(summaryKey, JSON.stringify(job));
       // Update the first element (running snapshot) to finished
       await redis.lset(resultsKey, 0, JSON.stringify(job));
-      await redis.publish("trading:jobs:ml_training:finished", JSON.stringify(job));
+      await redis.publish(
+        "trading:jobs:ml_training:finished",
+        JSON.stringify(job),
+      );
     } catch (e) {
       log.warn({ err: e }, "Failed to persist training job result");
     }
     // Release lock
-    try { await redis.del(lockKey); } catch (e) {}
+    try {
+      await redis.del(lockKey);
+    } catch (e) {}
     log.info({ jobId, code, signal }, "ML training job finished");
+
+    // After successful training, refresh ML state in Redis
+    // so the dashboard immediately reflects new params.
+    if (code === 0) {
+      try {
+        const mlAgent = agents.find((a) => a.id === "ml-optimizer");
+        if (mlAgent) {
+          log.info("Refreshing ML state after successful training...");
+          await runMLStateRefresh(mlAgent);
+        }
+      } catch (e) {
+        log.warn({ err: e }, "Failed to refresh ML state after training");
+      }
+    }
 
     // Discord notification
     if (code === 0) {
-      discord.sendAlert("success", `✅ ML training complete (job ${jobId})`).catch(() => {});
+      discord
+        .sendAlert("success", `✅ ML training complete (job ${jobId})`)
+        .catch(() => {});
     } else {
       const msg = `❌ ML training FAILED (job ${jobId}, exit=${code})`;
       discord.sendAlert("critical", msg).catch(() => {});
       // Also publish to Redis alerts channel
-      redis.publish("trading:alerts", JSON.stringify({
-        alerts: [msg], riskLevel: "HIGH",
-      })).catch(() => {});
+      redis
+        .publish(
+          "trading:alerts",
+          JSON.stringify({
+            alerts: [msg],
+            riskLevel: "HIGH",
+          }),
+        )
+        .catch(() => {});
     }
   });
 
@@ -579,7 +658,7 @@ const taskRunners = {
   "signal-engineer": runSignalEngineer,
   "market-analyst": runMarketAnalyst,
   "security-auditor": runSecurityAuditor,
-  "ml-optimizer": runMLOptimizer,
+  "ml-optimizer": runMLStateRefresh,
 };
 
 // ─── Execute Agent Task ────────────────────────────────────────
@@ -603,14 +682,14 @@ async function executeAgent(agent) {
       JSON.stringify({
         ...agent,
         lastDuration: Date.now() - startTime,
-      })
+      }),
     );
 
     // Store latest finding
     if (finding) {
       await redis.lpush(
         `trading:findings:${agent.id}`,
-        JSON.stringify(finding)
+        JSON.stringify(finding),
       );
       await redis.ltrim(`trading:findings:${agent.id}`, 0, 99);
 
@@ -619,7 +698,12 @@ async function executeAgent(agent) {
       await redis.ltrim("trading:findings:all", 0, 499);
 
       // Send important findings to Discord
-      const importantTypes = ["risk-assessment", "signal-report", "security-audit", "ml-optimization"];
+      const importantTypes = [
+        "risk-assessment",
+        "signal-report",
+        "security-audit",
+        "ml-optimization",
+      ];
       if (importantTypes.includes(finding.type)) {
         discord.sendFinding({ ...finding, emoji: agent.emoji }).catch(() => {});
       }
@@ -627,7 +711,7 @@ async function executeAgent(agent) {
 
     log.info(
       { agent: agent.id, duration: Date.now() - startTime },
-      "Agent completed"
+      "Agent completed",
     );
   } catch (err) {
     agent.status = "error";
@@ -639,7 +723,7 @@ async function executeAgent(agent) {
       JSON.stringify({
         ...agent,
         error: err.message,
-      })
+      }),
     );
   }
 }
@@ -654,19 +738,20 @@ function startScheduler() {
       () => executeAgent(agent),
       null,
       true,
-      TZ
+      TZ,
     );
     jobs.push(job);
-    log.info(
-      { agent: agent.id, schedule: agent.schedule },
-      "Scheduled agent"
-    );
+    log.info({ agent: agent.id, schedule: agent.schedule }, "Scheduled agent");
   }
 }
 
 // ─── Auth helpers ──────────────────────────────────────────────
 const API_KEY = process.env.ML_TRAIN_API_KEY || "";
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:3000,http://dashboard:3000").split(",").map(s => s.trim());
+const ALLOWED_ORIGINS = (
+  process.env.CORS_ORIGINS || "http://localhost:3000,http://dashboard:3000"
+)
+  .split(",")
+  .map((s) => s.trim());
 
 function checkAuth(req) {
   if (!API_KEY) return true; // no key configured = open (dev mode)
@@ -677,7 +762,9 @@ function checkAuth(req) {
 // ─── HTTP API (for dashboard) ──────────────────────────────────
 const server = createServer(async (req, res) => {
   const origin = req.headers.origin || "";
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin)
+    ? origin
+    : ALLOWED_ORIGINS[0];
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -712,14 +799,17 @@ const server = createServer(async (req, res) => {
             lastRun: a.lastRun,
             findingsCount: a.findings.length,
             latestFinding: a.findings[0] || null,
-          }))
-        )
+          })),
+        ),
       );
       return;
     }
 
     // Get specific agent findings
-    if (url.pathname.startsWith("/api/agents/") && url.pathname.endsWith("/findings")) {
+    if (
+      url.pathname.startsWith("/api/agents/") &&
+      url.pathname.endsWith("/findings")
+    ) {
       const agentId = url.pathname.split("/")[3];
       const agent = agents.find((a) => a.id === agentId);
       if (!agent) {
@@ -751,7 +841,7 @@ const server = createServer(async (req, res) => {
         JSON.stringify({
           performance: performance || [],
           profit: profit || {},
-        })
+        }),
       );
       return;
     }
@@ -791,7 +881,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/ml/state") {
       const mlState = await redis.get("trading:ml:state");
       res.writeHead(200);
-      res.end(mlState || JSON.stringify({ regime: "unknown", strategy: "A52", params: null }));
+      res.end(
+        mlState ||
+          JSON.stringify({ regime: "unknown", strategy: "A52", params: null }),
+      );
       return;
     }
 
@@ -814,7 +907,11 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/ml/jobs") {
       const limit = parseInt(url.searchParams.get("limit") || "20", 10);
       try {
-        const raw = await redis.lrange("trading:jobs:ml_training:results", 0, limit - 1);
+        const raw = await redis.lrange(
+          "trading:jobs:ml_training:results",
+          0,
+          limit - 1,
+        );
         const jobs = raw.map((r) => JSON.parse(r));
         res.writeHead(200);
         res.end(JSON.stringify(jobs));
@@ -826,7 +923,10 @@ const server = createServer(async (req, res) => {
     }
 
     // Get logs for a specific job
-    if (url.pathname.startsWith("/api/ml/jobs/") && url.pathname.endsWith("/logs")) {
+    if (
+      url.pathname.startsWith("/api/ml/jobs/") &&
+      url.pathname.endsWith("/logs")
+    ) {
       // path: /api/ml/jobs/:id/logs  →  ["", "api", "ml", "jobs", ID, "logs"]
       const parts = url.pathname.split("/");
       const jobId = parts[4];
@@ -861,16 +961,28 @@ const server = createServer(async (req, res) => {
       const cdVal = await redis.get(cdKey);
       if (cdVal) {
         res.writeHead(429);
-        res.end(JSON.stringify({ error: "Training cooldown active. Try again later.", cooldownUntil: cdVal }));
+        res.end(
+          JSON.stringify({
+            error: "Training cooldown active. Try again later.",
+            cooldownUntil: cdVal,
+          }),
+        );
         return;
       }
 
       try {
         const job = await startTrainingJob("api");
         // Set 5-minute cooldown
-        await redis.set(cdKey, new Date(Date.now() + 300_000).toISOString(), "EX", 300);
+        await redis.set(
+          cdKey,
+          new Date(Date.now() + 300_000).toISOString(),
+          "EX",
+          300,
+        );
         res.writeHead(202);
-        res.end(JSON.stringify({ status: "ml-training-started", jobId: job.id }));
+        res.end(
+          JSON.stringify({ status: "ml-training-started", jobId: job.id }),
+        );
       } catch (err) {
         log.error({ err }, "Failed to start ML training job");
         const status = err.message.includes("Another ML training") ? 409 : 500;
@@ -892,21 +1004,37 @@ const server = createServer(async (req, res) => {
       for await (const chunk of req) body += chunk;
       const { strategy, timerange } = JSON.parse(body || "{}");
       const tr = timerange || getDefaultTimerange();
-      const strats = (!strategy || strategy === "all")
-        ? ["A52Strategy", "OPTStrategy", "A51Strategy", "A31Strategy", "AdaptiveMLStrategy"]
-        : [strategy];
+      const strats =
+        !strategy || strategy === "all"
+          ? [
+              "A52Strategy",
+              "OPTStrategy",
+              "A51Strategy",
+              "A31Strategy",
+              "AdaptiveMLStrategy",
+            ]
+          : [strategy];
 
       log.info({ strategies: strats, timerange: tr }, "Backtest triggered");
-      discord.sendAlert("info", `🏃 Backtest started: ${strats.join(", ")} | Range: ${tr}`);
+      discord.sendAlert(
+        "info",
+        `🏃 Backtest started: ${strats.join(", ")} | Range: ${tr}`,
+      );
 
       // Run backtests in background
-      runBacktests(strats, tr).catch(err => {
+      runBacktests(strats, tr).catch((err) => {
         log.error({ err }, "Backtest pipeline failed");
         discord.sendAlert("critical", `❌ Backtest failed: ${err.message}`);
       });
 
       res.writeHead(202);
-      res.end(JSON.stringify({ status: "backtest-started", strategies: strats, timerange: tr }));
+      res.end(
+        JSON.stringify({
+          status: "backtest-started",
+          strategies: strats,
+          timerange: tr,
+        }),
+      );
       return;
     }
 
@@ -932,15 +1060,28 @@ const server = createServer(async (req, res) => {
       const pairList = pairs || ["ETH/USDT:USDT"];
       const tfList = timeframes || ["5m", "15m", "1h"];
 
-      log.info({ pairs: pairList, timeframes: tfList, timerange: tr }, "Data download triggered");
-      discord.sendAlert("info", `📥 Downloading data: ${pairList.join(", ")} | ${tfList.join(", ")} | ${tr}`);
+      log.info(
+        { pairs: pairList, timeframes: tfList, timerange: tr },
+        "Data download triggered",
+      );
+      discord.sendAlert(
+        "info",
+        `📥 Downloading data: ${pairList.join(", ")} | ${tfList.join(", ")} | ${tr}`,
+      );
 
-      downloadData(pairList, tfList, tr).catch(err => {
+      downloadData(pairList, tfList, tr).catch((err) => {
         log.error({ err }, "Data download failed");
       });
 
       res.writeHead(202);
-      res.end(JSON.stringify({ status: "download-started", pairs: pairList, timeframes: tfList, timerange: tr }));
+      res.end(
+        JSON.stringify({
+          status: "download-started",
+          pairs: pairList,
+          timeframes: tfList,
+          timerange: tr,
+        }),
+      );
       return;
     }
 
@@ -972,9 +1113,11 @@ function getDefaultTimerange() {
 async function downloadData(pairs, timeframes, timerange) {
   // Sanitize inputs to prevent command injection
   const safePat = /^[a-zA-Z0-9/:_\-. ]+$/;
-  const pairArg = pairs.filter(p => safePat.test(p)).join(" ");
-  const tfArg = timeframes.filter(t => safePat.test(t)).join(" ");
-  const safeTimerange = /^\d{8}-\d{8}$/.test(timerange) ? timerange : "20240101-20241231";
+  const pairArg = pairs.filter((p) => safePat.test(p)).join(" ");
+  const tfArg = timeframes.filter((t) => safePat.test(t)).join(" ");
+  const safeTimerange = /^\d{8}-\d{8}$/.test(timerange)
+    ? timerange
+    : "20240101-20241231";
   if (!pairArg || !tfArg) {
     throw new Error("Invalid input characters in download params");
   }
@@ -989,7 +1132,10 @@ async function downloadData(pairs, timeframes, timerange) {
         return;
       }
       log.info("Data download complete");
-      discord.sendAlert("success", `✅ Data download complete: ${pairs.join(", ")}`);
+      discord.sendAlert(
+        "success",
+        `✅ Data download complete: ${pairs.join(", ")}`,
+      );
       resolve(stdout);
     });
   });
@@ -1004,7 +1150,9 @@ async function runBacktests(strategies, timerange) {
     try {
       // Sanitize strategy name and timerange to prevent command injection
       const safeStrategy = strategy.replace(/[^a-zA-Z0-9_]/g, "");
-      const safeTimerange = /^\d{8}-\d{8}$/.test(timerange) ? timerange : "20240101-20241231";
+      const safeTimerange = /^\d{8}-\d{8}$/.test(timerange)
+        ? timerange
+        : "20240101-20241231";
       const output = await new Promise((resolve, reject) => {
         exec(
           `docker compose run --rm freqtrade backtesting --config /freqtrade/config/config_backtest.json --strategy ${safeStrategy} --strategy-path /freqtrade/user_data/strategies --timerange ${safeTimerange} --timeframe 5m --enable-protections --export trades`,
@@ -1012,7 +1160,7 @@ async function runBacktests(strategies, timerange) {
           (err, stdout, stderr) => {
             if (err) reject(err);
             else resolve(stdout + stderr);
-          }
+          },
         );
       });
 
@@ -1040,10 +1188,12 @@ async function runBacktests(strategies, timerange) {
   }
 
   // Summary to Discord
-  const totalProfit = results.filter(r => r.profit).reduce((s, r) => s + (r.profit || 0), 0);
+  const totalProfit = results
+    .filter((r) => r.profit)
+    .reduce((s, r) => s + (r.profit || 0), 0);
   await discord.sendAlert(
     totalProfit >= 0 ? "success" : "warning",
-    `🏁 Backtest suite complete!\n${results.map(r => `• **${r.strategy}**: ${r.profit?.toFixed(2) || "ERROR"}% profit, ${r.totalTrades || 0} trades`).join("\n")}`
+    `🏁 Backtest suite complete!\n${results.map((r) => `• **${r.strategy}**: ${r.profit?.toFixed(2) || "ERROR"}% profit, ${r.totalTrades || 0} trades`).join("\n")}`,
   );
 
   return results;
@@ -1051,7 +1201,11 @@ async function runBacktests(strategies, timerange) {
 
 function parseBacktestOutput(output, strategy, timerange) {
   const lines = output.split("\n");
-  let profit = 0, winRate = 0, maxDrawdown = 0, totalTrades = 0, sharpe = 0;
+  let profit = 0,
+    winRate = 0,
+    maxDrawdown = 0,
+    totalTrades = 0,
+    sharpe = 0;
 
   for (const line of lines) {
     const profitMatch = line.match(/Total profit\s+[\d.]+\s+.*?([\-\d.]+)\s*%/);
@@ -1108,11 +1262,7 @@ async function main() {
 
   // Store initial agent state
   for (const agent of agents) {
-    await redis.hset(
-      "trading:agents",
-      agent.id,
-      JSON.stringify(agent)
-    );
+    await redis.hset("trading:agents", agent.id, JSON.stringify(agent));
   }
 
   // Start scheduler

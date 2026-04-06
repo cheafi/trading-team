@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cheafi — Multi-Agent Algo Trading Platform</title>
+  <title>Cheafi — ETH/USDT 5m Short Specialist</title>
   <meta name="description" content="Autonomous AI trading team for ETH/USDT Futures on Binance. 7 cron-scheduled agents, ML-optimized strategy selection, real-time dashboard.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐼</text></svg>">
   <style>
@@ -96,17 +96,32 @@
       font-size: 0.9rem;
       transition: all 0.2s;
     }
-    .btn-primary {
-      background: var(--accent);
-      color: white;
-    }
+    .btn-primary { background: var(--accent); color: white; }
     .btn-primary:hover { background: #2563eb; text-decoration: none; }
-    .btn-secondary {
-      background: var(--card);
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
+    .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
     .btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+
+    /* Nav */
+    .toc {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .toc-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      font-size: 0.8rem;
+    }
+    .toc a { color: var(--muted); }
+    .toc a:hover { color: var(--text); text-decoration: none; }
 
     /* Section */
     .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
@@ -117,8 +132,28 @@
       margin-bottom: 32px;
       text-align: center;
     }
+    section h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin: 24px 0 12px;
+    }
 
-    /* Architecture */
+    /* Architecture diagram */
+    .arch-diagram {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.72rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    /* Architecture Grid */
     .arch-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -133,7 +168,7 @@
     }
     .arch-card:hover { border-color: var(--accent); }
     .arch-card .icon { font-size: 2rem; margin-bottom: 12px; }
-    .arch-card h3 { font-size: 1.1rem; margin-bottom: 4px; }
+    .arch-card h3 { font-size: 1.1rem; margin-bottom: 4px; margin-top: 0; }
     .arch-card .port { color: var(--muted); font-size: 0.8rem; margin-bottom: 8px; }
     .arch-card p { color: var(--muted); font-size: 0.85rem; }
 
@@ -156,25 +191,26 @@
     .agent-card h4 { font-size: 0.85rem; margin-bottom: 2px; }
     .agent-card .schedule { font-size: 0.7rem; color: var(--muted); }
 
-    /* Strategy */
-    .strat-table {
+    /* Tables */
+    .strat-table, .info-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.85rem;
     }
-    .strat-table th, .strat-table td {
+    .strat-table th, .strat-table td,
+    .info-table th, .info-table td {
       padding: 12px 16px;
       text-align: left;
       border-bottom: 1px solid var(--border);
     }
-    .strat-table th {
+    .strat-table th, .info-table th {
       color: var(--muted);
       font-weight: 500;
       font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .strat-table tr:hover td { background: #111827; }
+    .strat-table tr:hover td, .info-table tr:hover td { background: #111827; }
     .strat-table .active { color: var(--green); font-weight: 600; }
     .strat-table .disabled { color: #475569; }
 
@@ -222,16 +258,94 @@
       border-radius: 10px;
       padding: 20px;
     }
-    .risk-card .value {
-      font-size: 1.8rem;
-      font-weight: 800;
-      margin-bottom: 4px;
-    }
+    .risk-card .value { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
     .risk-card .label { color: var(--muted); font-size: 0.8rem; }
     .risk-card.red .value { color: var(--red); }
     .risk-card.orange .value { color: var(--orange); }
     .risk-card.green .value { color: var(--green); }
     .risk-card.blue .value { color: var(--accent); }
+
+    /* Code blocks */
+    .code-block {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 16px 0;
+    }
+    .code-block h3 { margin-top: 0; }
+    .code-block pre {
+      background: #111827;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      line-height: 1.7;
+      margin: 12px 0 0;
+    }
+    .code-block pre .comment { color: #475569; }
+    .code-block pre .cmd { color: var(--green); }
+    .code-block pre .val { color: var(--orange); }
+
+    /* Steps */
+    .steps { counter-reset: step; }
+    .step {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 20px 20px 60px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      width: 28px;
+      height: 28px;
+      background: var(--accent);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .step h4 { font-size: 0.95rem; margin-bottom: 6px; }
+    .step p { color: var(--muted); font-size: 0.85rem; }
+    .step code { font-size: 0.8em; }
+
+    /* Project tree */
+    .tree {
+      background: #111827;
+      padding: 20px;
+      border-radius: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .tree .dir { color: var(--accent); }
+    .tree .file { color: var(--green); }
+    .tree .desc { color: #475569; }
+
+    /* Callout */
+    .callout {
+      background: #1e293b;
+      border-left: 4px solid var(--orange);
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-size: 0.85rem;
+    }
+    .callout.danger { border-left-color: var(--red); }
+    .callout.info { border-left-color: var(--accent); }
+    .callout.success { border-left-color: var(--green); }
+    .callout strong { display: block; margin-bottom: 4px; }
 
     /* Footer */
     footer {
@@ -242,24 +356,11 @@
       font-size: 0.8rem;
     }
 
-    /* Quick Start */
-    .quickstart {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      margin-top: 16px;
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2rem; }
+      .toc-inner { gap: 16px; }
+      section { padding: 40px 0; }
     }
-    .quickstart pre {
-      background: #111827;
-      padding: 16px;
-      border-radius: 8px;
-      overflow-x: auto;
-      font-size: 0.8rem;
-      line-height: 1.7;
-    }
-    .quickstart pre .comment { color: #475569; }
-    .quickstart pre .cmd { color: var(--green); }
   </style>
 </head>
 <body>
@@ -268,47 +369,77 @@
 <header class="hero">
   <h1>🐼 Cheafi</h1>
   <p class="subtitle">
-    Multi-Agent Algo Trading Platform for ETH/USDT Futures.
-    7 autonomous AI agents. ML-optimized regime detection. Professional risk management.
+    ETH/USDT 5m R2 Short Specialist — research / paper-trading stage.
+    7 autonomous agents. ML-informed regime detection. Professional risk management.
   </p>
   <div class="badges">
     <span class="badge green">✅ Futures Only</span>
-    <span class="badge blue">🤖 7 AI Agents</span>
-    <span class="badge purple">🧠 ML Pipeline</span>
+    <span class="badge blue">🤖 7 Agents</span>
+    <span class="badge purple">🧠 R2 Short Only</span>
     <span class="badge orange">⚡ 5m Timeframe</span>
   </div>
   <div class="cta-row">
-    <a href="https://github.com/cheafi/trading-team" class="btn btn-primary">
-      ⭐ View on GitHub
-    </a>
-    <a href="#quickstart" class="btn btn-secondary">
-      🚀 Quick Start
-    </a>
+    <a href="https://github.com/cheafi/trading-team" class="btn btn-primary">⭐ View on GitHub</a>
+    <a href="#quickstart" class="btn btn-secondary">🚀 Quick Start</a>
   </div>
 </header>
 
+<!-- Sticky Nav -->
+<nav class="toc">
+  <div class="toc-inner">
+    <a href="#architecture">Architecture</a>
+    <a href="#agents">Agents</a>
+    <a href="#strategies">Strategies</a>
+    <a href="#ml-pipeline">ML Pipeline</a>
+    <a href="#risk">Risk</a>
+    <a href="#quickstart">Quick Start</a>
+    <a href="#discord">Discord</a>
+    <a href="#backtesting">Backtesting</a>
+    <a href="#api">API</a>
+    <a href="#structure">Structure</a>
+    <a href="#going-live">Go Live</a>
+  </div>
+</nav>
+
 <!-- Architecture -->
-<section>
+<section id="architecture">
   <div class="container">
     <h2>🏗️ Architecture</h2>
+    <div class="arch-diagram">┌─────────────────────────────────────────────────────────┐
+│                    Dashboard (Next.js)                   │
+│           http://localhost:3000 — Dark theme UI           │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ │
+│  │ 🔬   │ │ 📊   │ │ 🛡️   │ │ 📡   │ │ 🌍   │ │ 🔒   │ │
+│  │Quant │ │Back- │ │Risk  │ │Signal│ │Market│ │Sec.  │ │
+│  │Res.  │ │tester│ │Mgr.  │ │Eng.  │ │Anal. │ │Audit │ │
+│  └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ │
+│     └────────┴────────┴────┬───┴────────┴────────┘      │
+│              Agent Coordinator (Node.js :3001)            │
+└────────────────────────────┬─────────────────────────────┘
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+   ┌──────────┐        ┌──────────┐        ┌──────────┐
+   │ Freqtrade │        │  Redis   │        │ Exchange │
+   │  :8080    │        │  :6379   │        │ (Binance)│
+   └──────────┘        └──────────┘        └──────────┘</div>
     <div class="arch-grid">
       <div class="arch-card">
         <div class="icon">📊</div>
         <h3>Freqtrade</h3>
         <div class="port">Port 8080</div>
-        <p>Python trading engine for backtesting and live execution. Runs AdaptiveMLStrategy with hot-reloaded ML params.</p>
+        <p>Python trading engine — backtesting + live execution. Runs AdaptiveMLStrategy with hot-reloaded ML params.</p>
       </div>
       <div class="arch-card">
         <div class="icon">🤖</div>
         <h3>Agent Runner</h3>
         <div class="port">Port 3001</div>
-        <p>Node.js coordinator orchestrating 7 cron-scheduled AI agents. REST API + Redis pub/sub.</p>
+        <p>Node.js coordinator — 7 cron-scheduled AI agents. REST API + Redis pub/sub for dashboard.</p>
       </div>
       <div class="arch-card">
         <div class="icon">🖥️</div>
         <h3>Dashboard</h3>
         <div class="port">Port 3000</div>
-        <p>Next.js App Router control panel. Real-time P&L, risk gauge, agent status, ML training monitor.</p>
+        <p>Next.js App Router control panel. Real-time P&amp;L, risk gauge, agent status, ML training monitor.</p>
       </div>
       <div class="arch-card">
         <div class="icon">🧠</div>
@@ -321,110 +452,75 @@
 </section>
 
 <!-- Agents -->
-<section style="background: #111827;">
+<section id="agents" style="background: #111827;">
   <div class="container">
     <h2>🤖 Agent Team</h2>
     <div class="agent-grid">
       <div class="agent-card">
         <span class="emoji">🛡️</span>
-        <div>
-          <h4>Risk Manager (CRO)</h4>
-          <div class="schedule">Every 5 min · DD monitoring, halt if &gt; 20%</div>
-        </div>
+        <div><h4>Risk Manager (CRO)</h4><div class="schedule">*/5 * * * * · DD monitoring, halt if &gt; 20%</div></div>
       </div>
       <div class="agent-card">
         <span class="emoji">📡</span>
-        <div>
-          <h4>Signal Engineer</h4>
-          <div class="schedule">Every 5 min · Regime detection, entry signals</div>
-        </div>
+        <div><h4>Signal Engineer</h4><div class="schedule">*/5 * * * * · Regime detection, entry signals</div></div>
       </div>
       <div class="agent-card">
         <span class="emoji">🔬</span>
-        <div>
-          <h4>Quant Researcher</h4>
-          <div class="schedule">Every 15 min · Trade performance analysis</div>
-        </div>
+        <div><h4>Quant Researcher</h4><div class="schedule">*/15 * * * * · Trade performance analysis</div></div>
       </div>
       <div class="agent-card">
         <span class="emoji">🌍</span>
-        <div>
-          <h4>Market Analyst</h4>
-          <div class="schedule">Every 10 min · ETH macro + volume analysis</div>
-        </div>
+        <div><h4>Market Analyst</h4><div class="schedule">*/10 * * * * · ETH macro + volume analysis</div></div>
       </div>
       <div class="agent-card">
         <span class="emoji">📊</span>
-        <div>
-          <h4>Backtester</h4>
-          <div class="schedule">Every 2 hours · Auto backtest on new data</div>
-        </div>
+        <div><h4>Backtester</h4><div class="schedule">0 */2 * * * · Auto backtest on new data</div></div>
       </div>
       <div class="agent-card">
         <span class="emoji">🧠</span>
-        <div>
-          <h4>ML Optimizer</h4>
-          <div class="schedule">Every 2 hours · Retrain models, update params</div>
-        </div>
+        <div><h4>ML State Monitor</h4><div class="schedule">0 */2 * * * · Refresh params to Redis (no retraining)</div></div>
       </div>
       <div class="agent-card">
         <span class="emoji">🔒</span>
-        <div>
-          <h4>Security Auditor</h4>
-          <div class="schedule">Every 6 hours · FT version, health, pair locks</div>
-        </div>
+        <div><h4>Security Auditor</h4><div class="schedule">0 */6 * * * · FT version, health, pair locks</div></div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- Strategy -->
-<section>
+<!-- Strategies -->
+<section id="strategies">
   <div class="container">
-    <h2>📈 Regime → Strategy Mapping</h2>
-    <p style="text-align:center;color:var(--muted);margin-bottom:24px;">
+    <h2>📈 Strategies</h2>
+    <div style="overflow-x:auto;margin-bottom:24px;">
+      <table class="info-table">
+        <thead><tr><th>#</th><th>Strategy</th><th>c</th><th>e</th><th>Style</th><th>Target WR%</th><th>Target DD%</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><strong>A52</strong></td><td>0.50</td><td>-0.18</td><td>Multi-factor momentum</td><td>53%</td><td>&lt;10%</td></tr>
+          <tr><td>2</td><td><strong>OPT</strong></td><td>0.65</td><td>+0.05</td><td>Ichimoku + SuperTrend</td><td>48%</td><td>&lt;12%</td></tr>
+          <tr><td>3</td><td><strong>A51</strong></td><td>0.35</td><td>0.00</td><td>VWAP + Order Block scalper</td><td>62%</td><td>&lt;7%</td></tr>
+          <tr><td>4</td><td><strong>A31</strong></td><td>0.80</td><td>-0.10</td><td>Volatility squeeze breakout</td><td>42%</td><td>&lt;14%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout info">
+      <strong>📌 Parameters</strong>
+      <code>c</code> = Position sizing coefficient (0.0–1.0, higher = more aggressive)<br>
+      <code>e</code> = Entry bias (−0.5 to +0.5, negative = short bias, positive = long bias)
+    </div>
+
+    <h3 style="text-align:center;margin-top:32px;">Regime → Strategy Mapping</h3>
+    <p style="text-align:center;color:var(--muted);margin-bottom:16px;">
       Only R2 (RANGING) short trades are active — proven profitable. R0/R1/R3 disabled after data analysis.
     </p>
     <div style="overflow-x:auto;">
       <table class="strat-table">
-        <thead>
-          <tr>
-            <th>Regime</th>
-            <th>Name</th>
-            <th>Strategy</th>
-            <th>Direction</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Regime</th><th>Name</th><th>Strategy</th><th>Direction</th><th>Status</th></tr></thead>
         <tbody>
-          <tr>
-            <td>R0</td>
-            <td>TRENDING UP</td>
-            <td class="disabled">A31 (Squeeze)</td>
-            <td class="disabled">—</td>
-            <td class="disabled">⛔ Disabled</td>
-          </tr>
-          <tr>
-            <td>R1</td>
-            <td>TRENDING DOWN</td>
-            <td class="disabled">A51 (VWAP)</td>
-            <td class="disabled">—</td>
-            <td class="disabled">⛔ Disabled</td>
-          </tr>
-          <tr style="background:#10b98110;">
-            <td><strong>R2</strong></td>
-            <td><strong>RANGING</strong></td>
-            <td class="active">A52 (Momentum)</td>
-            <td class="active">SHORT only</td>
-            <td class="active">✅ Active</td>
-          </tr>
-          <tr>
-            <td>R3</td>
-            <td>VOLATILE</td>
-            <td class="disabled">A52 (Momentum)</td>
-            <td class="disabled">—</td>
-            <td class="disabled">⛔ Disabled</td>
-          </tr>
+          <tr><td>R0</td><td>TRENDING UP</td><td class="disabled">A31 (Squeeze)</td><td class="disabled">—</td><td class="disabled">⛔ Disabled</td></tr>
+          <tr><td>R1</td><td>TRENDING DOWN</td><td class="disabled">A51 (VWAP)</td><td class="disabled">—</td><td class="disabled">⛔ Disabled</td></tr>
+          <tr style="background:#10b98110;"><td><strong>R2</strong></td><td><strong>RANGING</strong></td><td class="active">A52 (Momentum)</td><td class="active">SHORT only</td><td class="active">✅ Active</td></tr>
+          <tr><td>R3</td><td>VOLATILE</td><td class="disabled">A52 (Momentum)</td><td class="disabled">—</td><td class="disabled">⛔ Disabled</td></tr>
         </tbody>
       </table>
     </div>
@@ -432,7 +528,7 @@
 </section>
 
 <!-- ML Pipeline -->
-<section style="background: #111827;">
+<section id="ml-pipeline" style="background: #111827;">
   <div class="container">
     <h2>🧠 ML Pipeline</h2>
     <div class="pipeline">
@@ -446,29 +542,276 @@
       <span class="comment">// PRO features: Kelly Criterion sizing, MFE-calibrated stops,</span><br>
       <span class="comment">// walk-forward validation, Monte Carlo simulation, equity curve analysis</span>
     </div>
+    <div class="callout success" style="margin-top:20px;">
+      <strong>� Honest Assessment</strong>
+      The quality model uses 3 features (hour, weekday, side) — a session-direction prior, not deep trade intelligence.
+      The regime model is trained but NOT used in live decisions. Regime detection is rule-based.
+      Training via the API relearns from existing backtests — it does NOT download fresh data.
+    </div>
   </div>
 </section>
 
-<!-- Risk Rules -->
-<section>
+<!-- Risk -->
+<section id="risk">
   <div class="container">
     <h2>🛡️ Risk Envelope</h2>
     <div class="risk-grid">
-      <div class="risk-card red">
-        <div class="value">20%</div>
-        <div class="label">Emergency halt drawdown</div>
+      <div class="risk-card red"><div class="value">20%</div><div class="label">Emergency halt drawdown</div></div>
+      <div class="risk-card orange"><div class="value">15%</div><div class="label">Alert drawdown threshold</div></div>
+      <div class="risk-card blue"><div class="value">4</div><div class="label">Max open positions</div></div>
+      <div class="risk-card green"><div class="value">2×</div><div class="label">Min edge vs round-trip fees</div></div>
+    </div>
+    <div class="callout danger" style="margin-top:20px;">
+      <strong>⚠️ Safety First</strong>
+      <code>dry_run: true</code> by default. No real money until you explicitly enable live trading. Trailing stops on all strategies. Automatic position reduction on risk threshold breach.
+    </div>
+  </div>
+</section>
+
+<!-- Quick Start -->
+<section id="quickstart" style="background: #111827;">
+  <div class="container">
+    <h2>🚀 Quick Start</h2>
+    <div class="code-block">
+      <h3>1. Clone &amp; Configure</h3>
+      <pre><span class="cmd">git clone https://github.com/cheafi/trading-team.git</span>
+<span class="cmd">cd trading-team</span>
+<span class="cmd">cp .env.example .env</span>          <span class="comment"># fill in your keys (optional — dry_run works without)</span>
+<span class="cmd">chmod +x scripts/*.sh</span></pre>
+    </div>
+    <div class="code-block">
+      <h3>2. Start Full Stack</h3>
+      <pre><span class="comment"># Start all 4 Docker services</span>
+<span class="cmd">./scripts/start.sh</span>
+<span class="comment"># — or —</span>
+<span class="cmd">docker compose up -d</span></pre>
+    </div>
+    <div class="code-block">
+      <h3>3. Open Dashboard</h3>
+      <pre><span class="cmd">open http://localhost:3000</span>     <span class="comment"># Next.js control panel</span></pre>
+    </div>
+    <div class="code-block">
+      <h3>4. Backtest All Strategies</h3>
+      <pre><span class="cmd">./scripts/backtest-all.sh 20240101-20260101</span>
+
+<span class="comment"># Or single strategy</span>
+<span class="cmd">docker compose run --rm freqtrade backtesting \
+  --config /freqtrade/config/config_backtest.json \
+  --strategy AdaptiveMLStrategy \
+  --strategy-path /freqtrade/user_data/strategies \
+  --timerange 20240101-20260101 --timeframe 5m \
+  --enable-protections --export trades</span></pre>
+    </div>
+    <div class="code-block">
+      <h3>5. Retrain ML Models</h3>
+      <pre><span class="comment"># Via API (triggers background job with real-time logs)</span>
+<span class="cmd">curl -X POST http://localhost:3001/api/ml/train</span>
+
+<span class="comment"># Or directly inside the Freqtrade container</span>
+<span class="cmd">docker compose exec freqtrade python \
+  /freqtrade/user_data/strategies/ml_optimizer.py --retrain</span></pre>
+    </div>
+    <div class="code-block">
+      <h3>6. Check Freqtrade API</h3>
+      <pre><span class="comment"># Health check</span>
+<span class="cmd">curl http://localhost:8080/api/v1/ping</span>
+
+<span class="comment"># Profit summary (creds: freqtrader / SuperSecure123)</span>
+<span class="cmd">curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit</span>
+
+<span class="comment"># Open trades</span>
+<span class="cmd">curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/status</span></pre>
+    </div>
+    <div class="code-block">
+      <h3>7. Tail All Logs</h3>
+      <pre><span class="cmd">docker compose logs -f</span>                  <span class="comment"># all services</span>
+<span class="cmd">docker compose logs -f freqtrade</span>         <span class="comment"># trading engine only</span>
+<span class="cmd">docker compose logs -f agent-runner</span>      <span class="comment"># agents only</span></pre>
+    </div>
+    <div class="code-block">
+      <h3>8. Stop Everything</h3>
+      <pre><span class="cmd">./scripts/stop.sh</span>
+<span class="comment"># — or —</span>
+<span class="cmd">docker compose down</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- Discord -->
+<section id="discord">
+  <div class="container">
+    <h2>🤖 Discord Bot Setup</h2>
+    <p style="text-align:center;color:var(--muted);margin-bottom:24px;">
+      Optional but recommended — get real-time alerts, risk notifications, and trade signals in Discord.
+    </p>
+    <div class="steps">
+      <div class="step">
+        <h4>Create Discord Application</h4>
+        <p>Go to <a href="https://discord.com/developers/applications" target="_blank">Discord Developer Portal</a> → "New Application" → name it "Cheafi Trading Bot"</p>
       </div>
-      <div class="risk-card orange">
-        <div class="value">15%</div>
-        <div class="label">Alert drawdown threshold</div>
+      <div class="step">
+        <h4>Create Bot</h4>
+        <p>Bot tab → Add Bot → Copy <strong>TOKEN</strong>. Enable <strong>MESSAGE CONTENT INTENT</strong> under Privileged Gateway Intents.</p>
       </div>
-      <div class="risk-card blue">
-        <div class="value">4</div>
-        <div class="label">Max open positions</div>
+      <div class="step">
+        <h4>Invite Bot to Server</h4>
+        <p>OAuth2 → URL Generator → Scopes: <code>bot</code>, <code>applications.commands</code> → Permissions: Send Messages, Embed Links, Read Message History → Copy URL → Open in browser → Select server → Authorize.</p>
       </div>
-      <div class="risk-card green">
-        <div class="value">2×</div>
-        <div class="label">Min edge vs round-trip fees</div>
+      <div class="step">
+        <h4>Configure .env</h4>
+        <p><code>DISCORD_BOT_TOKEN=your_bot_token_here</code><br><code>DISCORD_CHANNEL_NAME=trading-cc</code></p>
+      </div>
+      <div class="step">
+        <h4>Test Connection</h4>
+        <p>Restart: <code>docker compose restart agent-runner</code><br>
+           Check: <code>curl http://localhost:3001/api/discord/status</code><br>
+           In Discord: <code>!help</code> → Bot responds with commands</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Backtesting -->
+<section id="backtesting" style="background: #111827;">
+  <div class="container">
+    <h2>📊 Backtesting</h2>
+    <div class="code-block" style="background:transparent;border:0;padding:0;">
+      <pre><span class="comment"># Backtest all strategies for a date range</span>
+<span class="cmd">./scripts/backtest-all.sh 20240101-20260101</span>
+
+<span class="comment"># Backtest specific strategy</span>
+<span class="cmd">docker compose run --rm freqtrade backtesting \
+  --config /freqtrade/config/config_backtest.json \
+  --strategy A52Strategy \
+  --strategy-path /freqtrade/user_data/strategies \
+  --timerange 20240101-20260101 \
+  --timeframe 5m \
+  --enable-protections --export trades</span>
+
+<span class="comment"># Download historical data first (if needed)</span>
+<span class="cmd">docker compose run --rm freqtrade download-data \
+  --config /freqtrade/config/config.json \
+  --pairs ETH/USDT:USDT \
+  --timeframes 5m 15m 1h \
+  --timerange 20240101-20260101</span>
+
+<span class="comment"># Trigger backtest via API</span>
+<span class="cmd">curl -X POST http://localhost:3001/api/backtest/run \
+  -H "Content-Type: application/json" \
+  -d '{"strategy": "all", "timerange": "20240101-20260101"}'</span>
+
+<span class="comment"># Get backtest results</span>
+<span class="cmd">curl http://localhost:3001/api/backtest/results</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- API Endpoints -->
+<section id="api">
+  <div class="container">
+    <h2>🔌 API Endpoints</h2>
+    <div style="overflow-x:auto;">
+      <table class="info-table">
+        <thead><tr><th>Endpoint</th><th>Method</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>:3001/health</code></td><td>GET</td><td>Agent coordinator health check</td></tr>
+          <tr><td><code>:3001/api/agents</code></td><td>GET</td><td>All agent statuses + latest findings</td></tr>
+          <tr><td><code>:3001/api/findings</code></td><td>GET</td><td>Global findings stream (all agents)</td></tr>
+          <tr><td><code>:3001/api/strategies</code></td><td>GET</td><td>Strategy performance rankings</td></tr>
+          <tr><td><code>:3001/api/ml/state</code></td><td>GET</td><td>Current ML regime + params</td></tr>
+          <tr><td><code>:3001/api/ml/train</code></td><td>POST</td><td>Trigger ML model retraining</td></tr>
+          <tr><td><code>:3001/api/ml/jobs</code></td><td>GET</td><td>List ML training job history</td></tr>
+          <tr><td><code>:3001/api/ml/history</code></td><td>GET</td><td>ML training log (scores over time)</td></tr>
+          <tr><td><code>:3001/api/backtest/run</code></td><td>POST</td><td>Trigger backtest run</td></tr>
+          <tr><td><code>:3001/api/backtest/results</code></td><td>GET</td><td>Backtest results history</td></tr>
+          <tr><td><code>:3001/api/run</code></td><td>POST</td><td>Trigger specific agent manually</td></tr>
+          <tr><td><code>:3001/api/discord/status</code></td><td>GET</td><td>Discord bot connection status</td></tr>
+          <tr><td><code>:3001/api/ft/*</code></td><td>GET</td><td>Freqtrade API proxy</td></tr>
+          <tr><td><code>:8080/api/v1/ping</code></td><td>GET</td><td>Freqtrade health</td></tr>
+          <tr><td><code>:8080/api/v1/profit</code></td><td>GET</td><td>Freqtrade P&amp;L (auth required)</td></tr>
+          <tr><td><code>:8080/api/v1/status</code></td><td>GET</td><td>Open trades (auth required)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Project Structure -->
+<section id="structure" style="background: #111827;">
+  <div class="container">
+    <h2>📁 Project Structure</h2>
+    <div class="tree"><span class="dir">trading-team/</span>
+├── <span class="dir">agents/</span>                     <span class="desc"># Agent orchestration</span>
+│   ├── <span class="file">coordinator.mjs</span>         <span class="desc"># Main coordinator (Node.js ESM)</span>
+│   ├── <span class="file">discord-bot.mjs</span>         <span class="desc"># Discord bot integration</span>
+│   ├── <span class="file">package.json</span>
+│   ├── <span class="file">SOUL.md</span>                 <span class="desc"># Team mission &amp; values</span>
+│   ├── <span class="dir">quant-researcher/</span>       <span class="desc"># Per-agent skill configs</span>
+│   ├── <span class="dir">risk-manager/</span>
+│   ├── <span class="dir">signal-engineer/</span>
+│   ├── <span class="dir">market-analyst/</span>
+│   ├── <span class="dir">backtester/</span>
+│   ├── <span class="dir">ml-optimizer/</span>
+│   └── <span class="dir">security-auditor/</span>
+├── <span class="dir">dashboard/</span>                  <span class="desc"># Next.js frontend</span>
+│   ├── <span class="dir">src/app/</span>                <span class="desc"># App router pages</span>
+│   ├── <span class="dir">src/components/</span>         <span class="desc"># React components</span>
+│   ├── <span class="dir">src/lib/</span>                <span class="desc"># Hooks &amp; utilities</span>
+│   ├── <span class="file">Dockerfile</span>
+│   └── <span class="file">package.json</span>
+├── <span class="dir">freqtrade/</span>                  <span class="desc"># Trading engine</span>
+│   ├── <span class="dir">config/</span>
+│   │   ├── <span class="file">config.json</span>         <span class="desc"># Live/dry-run config</span>
+│   │   └── <span class="file">config_backtest.json</span> <span class="desc"># Backtest config</span>
+│   └── <span class="dir">user_data/</span>
+│       ├── <span class="dir">strategies/</span>         <span class="desc"># Trading strategy files</span>
+│       │   ├── <span class="file">AdaptiveMLStrategy.py</span>  <span class="desc"># Live meta-strategy</span>
+│       │   └── <span class="file">ml_optimizer.py</span>        <span class="desc"># ML training pipeline</span>
+│       ├── <span class="dir">ml_models/</span>          <span class="desc"># Trained models + params</span>
+│       │   ├── <span class="file">best_params.json</span>
+│       │   ├── <span class="file">regime_model.pkl</span>
+│       │   ├── <span class="file">quality_model.pkl</span>
+│       │   ├── <span class="file">anti_patterns.json</span>
+│       │   └── <span class="file">discipline_params.json</span>
+│       ├── <span class="dir">backtest_results/</span>   <span class="desc"># Backtest output JSONs</span>
+│       └── <span class="dir">data/</span>               <span class="desc"># Historical candle data</span>
+├── <span class="dir">scripts/</span>                    <span class="desc"># Automation scripts</span>
+│   ├── <span class="file">start.sh</span>  <span class="file">stop.sh</span>
+│   ├── <span class="file">backtest-all.sh</span>
+│   ├── <span class="file">ml-train.sh</span>  <span class="file">ml-train-container.sh</span>
+│   └── <span class="file">auto-learn.sh</span>
+├── <span class="dir">docs/</span>                       <span class="desc"># This site (GitHub Pages)</span>
+├── <span class="file">docker-compose.yml</span>          <span class="desc"># Full stack orchestration</span>
+├── <span class="file">Dockerfile.agents</span>           <span class="desc"># Agent runner image</span>
+├── <span class="file">.env.example</span>                <span class="desc"># Environment template</span>
+└── <span class="file">README.md</span></div>
+  </div>
+</section>
+
+<!-- Going Live -->
+<section id="going-live">
+  <div class="container">
+    <h2>🔄 Going Live</h2>
+    <div class="callout danger">
+      <strong>⚠️ WARNING: Real money at risk</strong>
+      Only switch to live trading after extensive backtesting and paper trading. Start with minimal capital.
+    </div>
+    <div class="steps">
+      <div class="step">
+        <h4>Get Binance API Keys</h4>
+        <p>Create API keys with <strong>Futures trading</strong> enabled. Never share your secret key.</p>
+      </div>
+      <div class="step">
+        <h4>Configure .env</h4>
+        <p><code>EXCHANGE_KEY=your_api_key</code><br><code>EXCHANGE_SECRET=your_api_secret</code></p>
+      </div>
+      <div class="step">
+        <h4>Switch off Dry Run</h4>
+        <p>Edit <code>freqtrade/config/config.json</code>: set <code>"dry_run": false</code></p>
+      </div>
+      <div class="step">
+        <h4>Restart</h4>
+        <p><code>docker compose restart freqtrade</code></p>
       </div>
     </div>
   </div>
@@ -479,86 +822,28 @@
   <div class="container">
     <h2>⚙️ Tech Stack</h2>
     <div class="tech-grid">
-      <div class="tech-item">
-        <div class="tech-emoji">🐍</div>
-        <h4>Python</h4>
-        <p>Freqtrade + ML</p>
-      </div>
-      <div class="tech-item">
-        <div class="tech-emoji">🟢</div>
-        <h4>Node.js</h4>
-        <p>Agent Coordinator</p>
-      </div>
-      <div class="tech-item">
-        <div class="tech-emoji">⚛️</div>
-        <h4>Next.js</h4>
-        <p>Dashboard UI</p>
-      </div>
-      <div class="tech-item">
-        <div class="tech-emoji">🗄️</div>
-        <h4>Redis</h4>
-        <p>State Bus</p>
-      </div>
-      <div class="tech-item">
-        <div class="tech-emoji">🐳</div>
-        <h4>Docker</h4>
-        <p>Compose Stack</p>
-      </div>
-      <div class="tech-item">
-        <div class="tech-emoji">🤖</div>
-        <h4>Discord</h4>
-        <p>Bot Integration</p>
-      </div>
-      <div class="tech-item">
-        <div class="tech-emoji">📊</div>
-        <h4>scikit-learn</h4>
-        <p>ML Models</p>
-      </div>
-      <div class="tech-item">
-        <div class="tech-emoji">📈</div>
-        <h4>TA-Lib</h4>
-        <p>Technical Analysis</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- Quick Start -->
-<section id="quickstart">
-  <div class="container">
-    <h2>🚀 Quick Start</h2>
-    <div class="quickstart">
-      <pre><span class="comment"># Clone and configure</span>
-<span class="cmd">git clone https://github.com/cheafi/trading-team.git</span>
-<span class="cmd">cd trading-team</span>
-<span class="cmd">cp .env.example .env</span>    <span class="comment"># fill in your keys</span>
-
-<span class="comment"># Start full stack (dry_run mode by default)</span>
-<span class="cmd">docker compose up -d</span>
-
-<span class="comment"># Open dashboard</span>
-<span class="cmd">open http://localhost:3000</span>
-
-<span class="comment"># Backtest all strategies</span>
-<span class="cmd">./scripts/backtest-all.sh 20240101-20260101</span>
-
-<span class="comment"># Retrain ML models</span>
-<span class="cmd">curl -X POST http://localhost:3001/api/ml/train</span></pre>
+      <div class="tech-item"><div class="tech-emoji">🐍</div><h4>Python</h4><p>Freqtrade + ML</p></div>
+      <div class="tech-item"><div class="tech-emoji">🟢</div><h4>Node.js</h4><p>Agent Coordinator</p></div>
+      <div class="tech-item"><div class="tech-emoji">⚛️</div><h4>Next.js</h4><p>Dashboard UI</p></div>
+      <div class="tech-item"><div class="tech-emoji">🗄️</div><h4>Redis</h4><p>State Bus</p></div>
+      <div class="tech-item"><div class="tech-emoji">🐳</div><h4>Docker</h4><p>Compose Stack</p></div>
+      <div class="tech-item"><div class="tech-emoji">🤖</div><h4>Discord</h4><p>Bot Integration</p></div>
+      <div class="tech-item"><div class="tech-emoji">📊</div><h4>scikit-learn</h4><p>ML Models</p></div>
+      <div class="tech-item"><div class="tech-emoji">📈</div><h4>TA-Lib</h4><p>Technical Analysis</p></div>
     </div>
   </div>
 </section>
 
 <!-- Footer -->
 <footer>
-  <p>
-    🐼 Cheafi Trading Team · Built with
+  <p>🐼 Cheafi Trading Team · Built with
     <a href="https://www.freqtrade.io/">Freqtrade</a>,
     <a href="https://nextjs.org/">Next.js</a>,
     <a href="https://redis.io/">Redis</a>
   </p>
   <p style="margin-top:8px;">
     <a href="https://github.com/cheafi/trading-team">GitHub</a> ·
-    <code>dry_run: true</code> by default — trade responsibly
+    <code>dry_run: true</code> by default · research / paper-trading stage
   </p>
 </footer>
 

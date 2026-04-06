@@ -1,60 +1,65 @@
 """
-AdaptiveML v3 PRO - Professional Quant Meta-Strategy
-======================================================
-Professional-grade enhancements over v2:
+AdaptiveML v3 PRO — ETH/USDT 5m R2 Short Specialist
+====================================================
+Currently a single-regime specialist (R2 RANGING, short-only).
+Other regimes (R0/R1/R3) are disabled — they produce more
+SL losses than ROI wins.
 
-  CORE (v2):
-  1. Multi-timeframe 15m + 1h confirmation
+  CORE:
+  1. Multi-timeframe 5m + 15m + 1h confirmation
   2. Self-learned ROI from trade duration buckets
   3. Session filter + directional bias
   4. Performance feedback loop (entry_adj/size_adj)
-  5. 8 sub-regime detection
+  5. Rule-based regime detection (4 base + 8 sub)
 
-  PRO (v3):
+  PRO:
   6.  Kelly Criterion position sizing (fractional Kelly)
   7.  MFE-calibrated trailing stops (data-driven)
   8.  Equity curve circuit breaker (pause on drawdown)
   9.  Consecutive loss cooldown (discipline after streaks)
   10. Daily loss limit (hard stop for the day)
   11. Fee-aware minimum edge filter
-  12. Trade quality gate (only take top 40% setups)
-  13. Anti-martingale (reduce size on losses, increase on wins)
+  12. Trade quality gate (session/direction prior)
+  13. Anti-martingale (reduce size on losses)
+
+Honest assessment:
+  - Quality model uses 3 features (hour, weekday, side) —
+    a session-direction prior, not deep trade intelligence.
+  - Regime model is trained but NOT used in live decisions.
+  - Only R2 short is active. The "adaptive" framing is
+    aspirational, not current reality.
 
 Philosophy: "Discipline is the bridge between goals and results."
-  - Only trade when edge > 2x fees
-  - Cut losers by MFE/MAE science, not emotion
-  - Position size by Kelly mathematics, not guesswork
-  - Pause when equity curve breaks down
 """
+
 import json
-import os
-import pickle
-from collections import defaultdict
-from datetime import datetime, timedelta
+import pickle  # noqa: S301 — used for quality_model.pkl
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pandas import DataFrame
-
 import talib.abstract as ta
 from freqtrade.strategy import (
-    IStrategy,
     DecimalParameter,
     IntParameter,
+    IStrategy,
 )
+from pandas import DataFrame
 
 # Path where the ML optimizer writes trained models
 MODEL_DIR = Path("/freqtrade/user_data/ml_models")
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-REGIME_MODEL_PATH = MODEL_DIR / "regime_model.pkl"
-PARAM_MODEL_PATH = MODEL_DIR / "param_model.pkl"
+# Active model artifacts:
 PERF_HISTORY_PATH = MODEL_DIR / "performance_history.json"
 BEST_PARAMS_PATH = MODEL_DIR / "best_params.json"
 QUALITY_MODEL_PATH = MODEL_DIR / "quality_model.pkl"
 DISCIPLINE_PATH = MODEL_DIR / "discipline_params.json"
 ANTI_PATTERN_PATH = MODEL_DIR / "anti_patterns.json"
+
+# Decision journal — persists every trade rejection reason
+REJECTION_LOG_PATH = MODEL_DIR / "rejection_journal.json"
 
 # Fee structure
 ROUND_TRIP_FEE = 0.001  # 0.10% (Binance futures maker+taker)
@@ -70,9 +75,9 @@ SESSION_HOURS = {
 
 class AdaptiveMLStrategy(IStrategy):
     """
-    Adaptive ML v3 PRO Meta-Strategy
-    Professional quant-grade: Kelly sizing, MFE-calibrated exits,
-    equity curve circuit breaker, discipline systems.
+    ETH/USDT 5m R2 Short Specialist
+    Currently runs one active regime (R2 RANGING, short-only).
+    Uses Kelly sizing, MFE-calibrated exits, and discipline systems.
     """
 
     INTERFACE_VERSION = 3
@@ -80,17 +85,11 @@ class AdaptiveMLStrategy(IStrategy):
     can_short = True  # FIXED: was False, blocking all short signals
 
     # Dynamic parameters - updated by ML optimizer
-    position_c = DecimalParameter(
-        0.1, 1.0, default=0.50, space="buy", optimize=True
-    )
-    entry_bias = DecimalParameter(
-        -0.5, 0.5, default=0.00, space="buy", optimize=True
-    )
+    position_c = DecimalParameter(0.1, 1.0, default=0.50, space="buy", optimize=True)
+    entry_bias = DecimalParameter(-0.5, 0.5, default=0.00, space="buy", optimize=True)
 
     # Regime detection windows
-    regime_lookback = IntParameter(
-        20, 100, default=50, space="buy", optimize=True
-    )
+    regime_lookback = IntParameter(20, 100, default=50, space="buy", optimize=True)
 
     # ML confidence threshold
     min_confidence = DecimalParameter(
@@ -117,8 +116,8 @@ class AdaptiveMLStrategy(IStrategy):
     _best_params = None
     _perf_history = None
     _quality_model_data = None  # PRO: quality model
-    _discipline_params = None   # PRO: discipline params
-    _anti_patterns = None       # PRO v4: learned anti-patterns
+    _discipline_params = None  # PRO: discipline params
+    _anti_patterns = None  # PRO v4: learned anti-patterns
     _last_model_load = 0
     _MODEL_RELOAD_INTERVAL = 300
 
@@ -127,10 +126,12 @@ class AdaptiveMLStrategy(IStrategy):
     _daily_pnl = 0.0
     _daily_trades = 0
     _last_trade_date = None
-    _equity_curve = []          # rolling equity for circuit breaker
-    _recent_results = []        # last N trade results
-    _MAX_RECENT = 20            # track last 20 trades
-    _paused_until = None        # cooldown timestamp
+    _equity_curve = []  # rolling equity for circuit breaker
+    _recent_results = []  # last N trade results
+    _MAX_RECENT = 20  # track last 20 trades
+    _paused_until = None  # cooldown timestamp
+    _rejection_log = []  # decision journal: last 100 rejections
+    _MAX_REJECTIONS = 100
 
     # ─── Multi-timeframe informative pairs ───────────────
     def informative_pairs(self):
@@ -157,6 +158,8 @@ class AdaptiveMLStrategy(IStrategy):
             except Exception:
                 self._best_params = None
 
+        # NOTE: _perf_history loaded for future use but not
+        # currently wired into live decision logic.
         if PERF_HISTORY_PATH.exists():
             try:
                 with open(PERF_HISTORY_PATH, "r") as f:
@@ -203,9 +206,7 @@ class AdaptiveMLStrategy(IStrategy):
         df["adx"] = ta.ADX(df, timeperiod=lookback)
 
         # Volatility: ATR normalized
-        df["atr_norm"] = (
-            ta.ATR(df, timeperiod=lookback) / df["close"]
-        ) * 100
+        df["atr_norm"] = (ta.ATR(df, timeperiod=lookback) / df["close"]) * 100
 
         # Direction: EMA slope
         ema = ta.EMA(df, timeperiod=lookback)
@@ -213,14 +214,10 @@ class AdaptiveMLStrategy(IStrategy):
 
         # Range indicator: BB width
         bb = ta.BBANDS(df, timeperiod=lookback)
-        df["bb_width"] = (
-            (bb["upperband"] - bb["lowerband"]) / bb["middleband"]
-        ) * 100
+        df["bb_width"] = ((bb["upperband"] - bb["lowerband"]) / bb["middleband"]) * 100
 
         # Volume trend
-        df["vol_ratio"] = df["volume"] / ta.SMA(
-            df["volume"], timeperiod=lookback
-        )
+        df["vol_ratio"] = df["volume"] / ta.SMA(df["volume"], timeperiod=lookback)
 
         # Momentum acceleration (rate of change of momentum)
         df["roc_10"] = ta.ROC(df, timeperiod=10)
@@ -235,9 +232,17 @@ class AdaptiveMLStrategy(IStrategy):
         df["regime"] = self._rule_based_regime(df)
         df["sub_regime"] = self._classify_sub_regime(df)
 
-        for col in ["regime", "adx", "atr_norm", "ema_slope",
-                     "bb_width", "vol_ratio", "momentum_accel",
-                     "vol_trend", "sub_regime"]:
+        for col in [
+            "regime",
+            "adx",
+            "atr_norm",
+            "ema_slope",
+            "bb_width",
+            "vol_ratio",
+            "momentum_accel",
+            "vol_trend",
+            "sub_regime",
+        ]:
             dataframe[col] = df[col]
 
         return dataframe
@@ -256,11 +261,7 @@ class AdaptiveMLStrategy(IStrategy):
 
         # High volatility: ATR_norm > 80th percentile
         # Use expanding (causal) quantile to avoid lookahead
-        atr_p80 = (
-            df["atr_norm"]
-            .expanding(min_periods=50)
-            .quantile(0.8)
-        )
+        atr_p80 = df["atr_norm"].expanding(min_periods=50).quantile(0.8)
         mask_vol = df["atr_norm"] > atr_p80
         regimes[mask_vol] = 3
 
@@ -276,8 +277,7 @@ class AdaptiveMLStrategy(IStrategy):
         6=VOLATILE_EXPANDING, 7=VOLATILE_CONTRACTING
         """
         sub = np.full(len(df), 4)  # default RANGE_TIGHT
-        regime = (df["regime"].values if "regime" in df
-                  else np.full(len(df), 2))
+        regime = df["regime"].values if "regime" in df else np.full(len(df), 2)
 
         ma = df["momentum_accel"].fillna(0).values
         vt = df["vol_trend"].fillna(0).values
@@ -292,14 +292,16 @@ class AdaptiveMLStrategy(IStrategy):
         )
 
         # Vectorized conditions — no Python loop
-        sub[regime == 0] = np.where(
-            ma[regime == 0] > 0, 0, 1)  # UP_STRONG / UP_WEAK
+        sub[regime == 0] = np.where(ma[regime == 0] > 0, 0, 1)  # UP_STRONG / UP_WEAK
         sub[regime == 1] = np.where(
-            ma[regime == 1] < 0, 2, 3)  # DOWN_STRONG / DOWN_WEAK
+            ma[regime == 1] < 0, 2, 3
+        )  # DOWN_STRONG / DOWN_WEAK
         sub[regime == 2] = np.where(
-            bw[regime == 2] < median_bw[regime == 2], 4, 5)  # TIGHT / WIDE
+            bw[regime == 2] < median_bw[regime == 2], 4, 5
+        )  # TIGHT / WIDE
         sub[regime == 3] = np.where(
-            vt[regime == 3] > 0, 6, 7)  # EXPANDING / CONTRACTING
+            vt[regime == 3] > 0, 6, 7
+        )  # EXPANDING / CONTRACTING
 
         return sub
 
@@ -316,48 +318,68 @@ class AdaptiveMLStrategy(IStrategy):
         # Updated to match best_params.json reality.
         defaults = {
             0: {
-                "c": 0.115, "e": 0.05,
+                "c": 0.115,
+                "e": 0.05,
                 "roi_table": {"0": 0.0043, "30": 0.00347, "120": 0.00347},
                 "sl": -0.005,
                 "trailing_offset": 0.003,
                 "strategy": "A31",
-                "entry_adj": 1.0, "size_adj": 1.0,
-                "best_session": None, "worst_session": None,
-                "direction_bias": "neutral", "bias_strength": 0.0,
-                "trail_start": 0.0103, "trail_step": 0.0052,
+                "entry_adj": 1.0,
+                "size_adj": 1.0,
+                "best_session": None,
+                "worst_session": None,
+                "direction_bias": "neutral",
+                "bias_strength": 0.0,
+                "trail_start": 0.0103,
+                "trail_step": 0.0052,
             },
             1: {
-                "c": 0.10, "e": 0.0,
+                "c": 0.10,
+                "e": 0.0,
                 "roi_table": {"0": 0.00227, "30": 0.0021, "120": 0.0021},
                 "sl": -0.005,
                 "trailing_offset": 0.0,
                 "strategy": "A51",
-                "entry_adj": 1.0, "size_adj": 1.0,
-                "best_session": None, "worst_session": None,
-                "direction_bias": "neutral", "bias_strength": 0.0,
-                "trail_start": 0.0055, "trail_step": 0.0027,
+                "entry_adj": 1.0,
+                "size_adj": 1.0,
+                "best_session": None,
+                "worst_session": None,
+                "direction_bias": "neutral",
+                "bias_strength": 0.0,
+                "trail_start": 0.0055,
+                "trail_step": 0.0027,
             },
             2: {
-                "c": 0.17, "e": -0.18,
+                "c": 0.17,
+                "e": -0.18,
                 "roi_table": {"0": 0.00402, "30": 0.00402, "120": 0.00402},
                 "sl": -0.0064,
                 "trailing_offset": 0.0,
                 "strategy": "A52",
-                "entry_adj": 1.0, "size_adj": 1.0,
-                "best_session": None, "worst_session": None,
-                "direction_bias": "neutral", "bias_strength": 0.0,
-                "trail_start": 0.009, "trail_step": 0.0045,
+                "entry_adj": 1.0,
+                "size_adj": 1.0,
+                "best_session": None,
+                "worst_session": None,
+                "direction_bias": "neutral",
+                "bias_strength": 0.0,
+                "trail_start": 0.009,
+                "trail_step": 0.0045,
             },
             3: {
-                "c": 0.10, "e": 0.115,
+                "c": 0.10,
+                "e": 0.115,
                 "roi_table": {"0": 0.0041, "30": 0.0035, "120": 0.0035},
                 "sl": -0.0058,
                 "trailing_offset": 0.0,
                 "strategy": "A52",
-                "entry_adj": 1.0, "size_adj": 1.0,
-                "best_session": None, "worst_session": None,
-                "direction_bias": "neutral", "bias_strength": 0.0,
-                "trail_start": 0.0063, "trail_step": 0.0032,
+                "entry_adj": 1.0,
+                "size_adj": 1.0,
+                "best_session": None,
+                "worst_session": None,
+                "direction_bias": "neutral",
+                "bias_strength": 0.0,
+                "trail_start": 0.0063,
+                "trail_step": 0.0032,
             },
         }
         return defaults.get(regime, defaults[2])
@@ -378,9 +400,7 @@ class AdaptiveMLStrategy(IStrategy):
 
     # ─── Multi-Timeframe Indicators ──────────────────────
 
-    def populate_indicators(
-        self, dataframe: DataFrame, metadata: dict
-    ) -> DataFrame:
+    def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         # Hot-reload ML models
         self._load_models()
 
@@ -396,7 +416,8 @@ class AdaptiveMLStrategy(IStrategy):
             # 1h trend direction: EMA50 slope
             inf_1h["ema50_slope_1h"] = (
                 (inf_1h["ema50_1h"] - inf_1h["ema50_1h"].shift(3))
-                / inf_1h["ema50_1h"].shift(3) * 100
+                / inf_1h["ema50_1h"].shift(3)
+                * 100
             )
             # 1h trend strength
             inf_1h["trend_1h"] = np.where(
@@ -404,9 +425,16 @@ class AdaptiveMLStrategy(IStrategy):
             )
             # Merge to 5m dataframe
             dataframe = self._merge_informative(
-                dataframe, inf_1h,
-                ["ema50_1h", "ema20_1h", "rsi_1h", "adx_1h",
-                 "ema50_slope_1h", "trend_1h"]
+                dataframe,
+                inf_1h,
+                [
+                    "ema50_1h",
+                    "ema20_1h",
+                    "rsi_1h",
+                    "adx_1h",
+                    "ema50_slope_1h",
+                    "trend_1h",
+                ],
             )
         else:
             dataframe["ema50_1h"] = np.nan
@@ -430,8 +458,7 @@ class AdaptiveMLStrategy(IStrategy):
                 inf_15m["ema12_15m"] > inf_15m["ema26_15m"], 1, -1
             )
             dataframe = self._merge_informative(
-                dataframe, inf_15m,
-                ["rsi_15m", "macd_hist_15m", "trend_15m"]
+                dataframe, inf_15m, ["rsi_15m", "macd_hist_15m", "trend_15m"]
             )
         else:
             dataframe["rsi_15m"] = np.nan
@@ -460,9 +487,7 @@ class AdaptiveMLStrategy(IStrategy):
         # ─── A51-style VWAP ───
         tp = (dataframe["high"] + dataframe["low"] + dataframe["close"]) / 3
         cumvol = dataframe["volume"].rolling(window=288, min_periods=1).sum()
-        cumtp = (tp * dataframe["volume"]).rolling(
-            window=288, min_periods=1
-        ).sum()
+        cumtp = (tp * dataframe["volume"]).rolling(window=288, min_periods=1).sum()
         dataframe["vwap"] = cumtp / cumvol
 
         # Short EMAs for scalping
@@ -479,8 +504,7 @@ class AdaptiveMLStrategy(IStrategy):
             & (dataframe["bb_upper"] < dataframe["kc_upper"])
         ).astype(int)
         dataframe["squeeze_fire"] = (
-            (dataframe["squeeze_on"].shift(1) == 1)
-            & (dataframe["squeeze_on"] == 0)
+            (dataframe["squeeze_on"].shift(1) == 1) & (dataframe["squeeze_on"] == 0)
         ).astype(int)
         delta = dataframe["close"] - kc_mid
         dataframe["momentum"] = ta.LINEARREG(delta, timeperiod=20)
@@ -492,14 +516,10 @@ class AdaptiveMLStrategy(IStrategy):
         dataframe["st_lower"] = hl2 - 3.0 * st_atr
 
         # Volume filter
-        dataframe["volume_sma"] = ta.SMA(
-            dataframe["volume"], timeperiod=20
-        )
+        dataframe["volume_sma"] = ta.SMA(dataframe["volume"], timeperiod=20)
 
         # ─── Combined direction score ───
-        trend = np.where(
-            dataframe["ema_12"] > dataframe["ema_26"], 1.0, -1.0
-        )
+        trend = np.where(dataframe["ema_12"] > dataframe["ema_26"], 1.0, -1.0)
         mom = (dataframe["rsi"] - 50) / 50
         macd_s = np.where(dataframe["macd_hist"] > 0, 0.5, -0.5)
 
@@ -511,16 +531,11 @@ class AdaptiveMLStrategy(IStrategy):
 
         # Dynamic bias from regime (capped to prevent over-filtering)
         regime_bias = dataframe["regime"].map(
-            lambda r: max(-0.05, min(0.05,
-                self._get_regime_params(r).get("e", 0.0)))
+            lambda r: max(-0.05, min(0.05, self._get_regime_params(r).get("e", 0.0)))
         )
 
         dataframe["direction_score"] = (
-            trend * 0.35
-            + mom * 0.25
-            + macd_s * 0.15
-            + tf_bonus
-            + regime_bias
+            trend * 0.35 + mom * 0.25 + macd_s * 0.15 + tf_bonus + regime_bias
         )
 
         # ─── Multi-TF agreement score (for entry filtering) ───
@@ -563,9 +578,7 @@ class AdaptiveMLStrategy(IStrategy):
 
     # ─── Entry Logic ─────────────────────────────────────
 
-    def populate_entry_trend(
-        self, dataframe: DataFrame, metadata: dict
-    ) -> DataFrame:
+    def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         # ── Only R2 (RANGING) shorts are proven profitable ──
         # R0/R1/R3 all produce more SL losses than ROI wins.
         # Skip computing entry conditions for disabled regimes
@@ -575,9 +588,7 @@ class AdaptiveMLStrategy(IStrategy):
         params = self._get_regime_params(regime_id)
         strategy = params.get("strategy", "A52")
         entry_adj = params.get("entry_adj", 1.0)
-        direction_bias = params.get(
-            "direction_bias", "neutral"
-        )
+        direction_bias = params.get("direction_bias", "neutral")
         mask = dataframe["regime"] == regime_id
 
         # Ranging regime thresholds
@@ -585,8 +596,7 @@ class AdaptiveMLStrategy(IStrategy):
         vol_mult = 1.0 * min(entry_adj, 1.10)
 
         # Multi-TF: 1-of-3 for ranging
-        mtf_short = (
-            dataframe["mtf_agree_short"] >= 1)
+        mtf_short = dataframe["mtf_agree_short"] >= 1
 
         # Direction bias adjustments
         if direction_bias == "short":
@@ -595,89 +605,88 @@ class AdaptiveMLStrategy(IStrategy):
             short_dir_thresh = dir_thresh
 
         if strategy == "OPT":
-            short_cond = mask & mtf_short & (
-                (dataframe["ema_12"] < dataframe["ema_26"])
-                & (dataframe["direction_score"]
-                   < -short_dir_thresh)
-                & (dataframe["rsi"] > 30)
-                & (dataframe["rsi"] < 60)
-                & (dataframe["volume"]
-                   > dataframe["volume_sma"] * vol_mult)
-                & (dataframe["adx"] > 15)
+            short_cond = (
+                mask
+                & mtf_short
+                & (
+                    (dataframe["ema_12"] < dataframe["ema_26"])
+                    & (dataframe["direction_score"] < -short_dir_thresh)
+                    & (dataframe["rsi"] > 30)
+                    & (dataframe["rsi"] < 60)
+                    & (dataframe["volume"] > dataframe["volume_sma"] * vol_mult)
+                    & (dataframe["adx"] > 15)
+                )
             )
 
         elif strategy == "A51":
             a51_vol = max(vol_mult, 1.1)
-            short_cond = mask & mtf_short & (
-                (dataframe["close"] < dataframe["vwap"])
-                & (dataframe["ema_5"] < dataframe["ema_8"])
-                & (dataframe["rsi"] > 38)
-                & (dataframe["rsi"] < 58)
-                & (dataframe["macd_hist"] < 0)
-                & (dataframe["adx"] > 20)
-                & (dataframe["direction_score"]
-                   < -0.15)
-                & (dataframe["volume"]
-                   > dataframe["volume_sma"]
-                   * a51_vol)
+            short_cond = (
+                mask
+                & mtf_short
+                & (
+                    (dataframe["close"] < dataframe["vwap"])
+                    & (dataframe["ema_5"] < dataframe["ema_8"])
+                    & (dataframe["rsi"] > 38)
+                    & (dataframe["rsi"] < 58)
+                    & (dataframe["macd_hist"] < 0)
+                    & (dataframe["adx"] > 20)
+                    & (dataframe["direction_score"] < -0.15)
+                    & (dataframe["volume"] > dataframe["volume_sma"] * a51_vol)
+                )
             )
 
         elif strategy == "A31":
-            short_cond = mask & mtf_short & (
-                (dataframe["squeeze_fire"] == 1)
-                & (dataframe["momentum"] < 0)
-                & (dataframe["close"]
-                   < dataframe["ema_26"])
-                & (dataframe["direction_score"]
-                   < -0.2)
-                & (dataframe["rsi"] > 30)
-                & (dataframe["rsi"] < 60)
-                & (dataframe["adx"] > 15)
-                & (dataframe["volume"]
-                   > dataframe["volume_sma"]
-                   * 0.8)
+            short_cond = (
+                mask
+                & mtf_short
+                & (
+                    (dataframe["squeeze_fire"] == 1)
+                    & (dataframe["momentum"] < 0)
+                    & (dataframe["close"] < dataframe["ema_26"])
+                    & (dataframe["direction_score"] < -0.2)
+                    & (dataframe["rsi"] > 30)
+                    & (dataframe["rsi"] < 60)
+                    & (dataframe["adx"] > 15)
+                    & (dataframe["volume"] > dataframe["volume_sma"] * 0.8)
+                )
             )
 
         else:  # A52 default
-            short_cond = mask & mtf_short & (
-                (dataframe["direction_score"]
-                 < -short_dir_thresh)
-                & (dataframe["close"]
-                   < dataframe["ema_12"])
-                & (dataframe["rsi"] > 32)
-                & (dataframe["rsi"] < 60)
-                & (dataframe["macd_hist"] < 0)
-                & (dataframe["volume"]
-                   > dataframe["volume_sma"]
-                   * vol_mult)
-                & (dataframe["adx"] > 15)
+            short_cond = (
+                mask
+                & mtf_short
+                & (
+                    (dataframe["direction_score"] < -short_dir_thresh)
+                    & (dataframe["close"] < dataframe["ema_12"])
+                    & (dataframe["rsi"] > 32)
+                    & (dataframe["rsi"] < 60)
+                    & (dataframe["macd_hist"] < 0)
+                    & (dataframe["volume"] > dataframe["volume_sma"] * vol_mult)
+                    & (dataframe["adx"] > 15)
+                )
             )
 
-        tag = "ml_{}_r{}".format(
-            strategy.lower(), regime_id)
-        dataframe.loc[
-            short_cond, ["enter_short", "enter_tag"]
-        ] = (1, "{}_short".format(tag))
+        tag = "ml_{}_r{}".format(strategy.lower(), regime_id)
+        dataframe.loc[short_cond, ["enter_short", "enter_tag"]] = (
+            1,
+            "{}_short".format(tag),
+        )
 
         return dataframe
 
     # ─── Exit Logic ──────────────────────────────────────
 
-    def populate_exit_trend(
-        self, dataframe: DataFrame, metadata: dict
-    ) -> DataFrame:
+    def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         # ─── Smarter exits: require confirmation, not single triggers ───
 
         # Overbought exit: RSI extreme AND price above BB
         dataframe.loc[
-            (dataframe["rsi"] > 78)
-            & (dataframe["close"] > dataframe["bb_upper"]),
+            (dataframe["rsi"] > 78) & (dataframe["close"] > dataframe["bb_upper"]),
             ["exit_long", "exit_tag"],
         ] = (1, "ml_exit_overbought")
 
         dataframe.loc[
-            (dataframe["rsi"] < 22)
-            & (dataframe["close"] < dataframe["bb_lower"]),
+            (dataframe["rsi"] < 22) & (dataframe["close"] < dataframe["bb_lower"]),
             ["exit_short", "exit_tag"],
         ] = (1, "ml_exit_oversold")
 
@@ -701,8 +710,17 @@ class AdaptiveMLStrategy(IStrategy):
     # ─── Dynamic Position Sizing (Kelly Criterion) ────────
 
     def custom_stake_amount(
-        self, pair, current_time, current_rate, proposed_stake,
-        min_stake, max_stake, leverage, entry_tag, side, **kwargs
+        self,
+        pair,
+        current_time,
+        current_rate,
+        proposed_stake,
+        min_stake,
+        max_stake,
+        leverage,
+        entry_tag,
+        side,
+        **kwargs,
     ):
         """
         PRO: Kelly Criterion position sizing with discipline.
@@ -739,17 +757,13 @@ class AdaptiveMLStrategy(IStrategy):
 
                 # PRO: Anti-martingale (reduce after losses)
                 if self._consecutive_losses >= 2:
-                    reduction = max(
-                        0.3, 1.0 - self._consecutive_losses * 0.15
-                    )
+                    reduction = max(0.3, 1.0 - self._consecutive_losses * 0.15)
                     c *= reduction
 
                 # Reduce size in worst session
                 worst = params.get("worst_session")
                 if worst:
-                    current_sess = self._get_current_session(
-                        current_time
-                    )
+                    current_sess = self._get_current_session(current_time)
                     if current_sess == worst:
                         c *= 0.5
 
@@ -763,27 +777,48 @@ class AdaptiveMLStrategy(IStrategy):
 
     # ─── Trade Entry Confirmation (PRO Discipline) ────────
 
+    def _log_rejection(self, pair, side, reason, current_time):
+        """Persist trade rejection to decision journal."""
+        entry = {
+            "time": str(current_time),
+            "pair": pair,
+            "side": side,
+            "reason": reason,
+        }
+        self._rejection_log.append(entry)
+        if len(self._rejection_log) > self._MAX_REJECTIONS:
+            self._rejection_log = self._rejection_log[-self._MAX_REJECTIONS :]
+        # Persist to disk (async-safe: overwrite full file)
+        try:
+            with open(REJECTION_LOG_PATH, "w") as f:
+                json.dump(self._rejection_log[-50:], f, indent=1)
+        except Exception:
+            pass
+
     def confirm_trade_entry(
-        self, pair, order_type, amount, rate, time_in_force,
-        current_time, entry_tag, side, **kwargs
+        self,
+        pair,
+        order_type,
+        amount,
+        rate,
+        time_in_force,
+        current_time,
+        entry_tag,
+        side,
+        **kwargs,
     ):
         """
-        PRO discipline gate:
-        0. Futures-only pair guard (:USDT suffix required)
-        1. Consecutive loss cooldown
-        2. Daily loss limit circuit breaker
-        3. Equity curve circuit breaker
-        4. Volume & trend filters
-        5. Walk-forward robustness check
-        6. NEW: Quality model gate (AI-driven)
-        7. NEW: Regime transition filter
+        PRO discipline gate with decision journal.
+        Every rejection is persisted so operators can see
+        why the bot is not trading.
         """
         # GUARD: Only trade futures pairs (must have :USDT suffix)
         if ":USDT" not in pair:
+            self._log_rejection(pair, side, "not_futures_pair", current_time)
             return False
 
         # PRO: Reset daily counters
-        if hasattr(current_time, 'date'):
+        if hasattr(current_time, "date"):
             today = current_time.date()
         else:
             today = datetime.utcnow().date()
@@ -802,17 +837,23 @@ class AdaptiveMLStrategy(IStrategy):
                 pass
 
         params = self._get_regime_params(regime)
-        max_losses = params.get(
-            "cooldown_after_losses", 5)
+        max_losses = params.get("cooldown_after_losses", 5)
 
-        # Discipline: same rules in backtest and live
         if self._consecutive_losses >= max_losses:
+            self._log_rejection(
+                pair,
+                side,
+                f"cooldown_consecutive_losses_{self._consecutive_losses}",
+                current_time,
+            )
             return False
 
         # PRO: Daily loss limit
-        daily_limit = params.get(
-            "daily_loss_limit", 0.02)
+        daily_limit = params.get("daily_loss_limit", 0.02)
         if self._daily_pnl < -daily_limit:
+            self._log_rejection(
+                pair, side, f"daily_loss_limit_{self._daily_pnl:.4f}", current_time
+            )
             return False
 
         # PRO: Equity curve circuit breaker
@@ -820,70 +861,82 @@ class AdaptiveMLStrategy(IStrategy):
             recent = self._recent_results[-20:]
             if sum(recent) < -0.05:
                 if self._consecutive_losses >= 5:
+                    self._log_rejection(
+                        pair, side, "equity_curve_breaker", current_time
+                    )
                     return False
 
-        dataframe, _ = self.dp.get_analyzed_dataframe(
-            pair, self.timeframe
-        )
+        dataframe, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
         if dataframe is None or len(dataframe) < 1:
             return True
         last = dataframe.iloc[-1]
 
-        # Block in extreme downtrend for longs only
+        # Block in extreme trend against trade direction
         adx_val = last.get("adx", 0)
         ema_slope_val = last.get("ema_slope", 0)
-        if (side == "long" and adx_val > 40
-                and ema_slope_val < -0.5):
+        if side == "long" and adx_val > 40 and ema_slope_val < -0.5:
+            self._log_rejection(
+                pair, side, f"extreme_downtrend_adx{adx_val:.0f}", current_time
+            )
             return False
-        if (side == "short" and adx_val > 40
-                and ema_slope_val > 0.5):
+        if side == "short" and adx_val > 40 and ema_slope_val > 0.5:
+            self._log_rejection(
+                pair, side, f"extreme_uptrend_adx{adx_val:.0f}", current_time
+            )
             return False
 
         # Require meaningful volume
         vol = last.get("volume", 0)
         vol_sma = last.get("volume_sma", 1)
         if vol_sma > 0 and vol < vol_sma * 0.4:
+            self._log_rejection(
+                pair, side, f"low_volume_{vol:.0f}_vs_{vol_sma:.0f}", current_time
+            )
             return False
 
         # 1h trend disagreement — only in extreme trends
         trend_1h = last.get("trend_1h", 0)
         if side == "long" and trend_1h < 0:
             if last.get("adx", 0) > 35:
+                self._log_rejection(pair, side, "1h_trend_disagree_long", current_time)
                 return False
         if side == "short" and trend_1h > 0:
             if last.get("adx", 0) > 35:
+                self._log_rejection(pair, side, "1h_trend_disagree_short", current_time)
                 return False
 
-        # PRO: Walk-forward robustness check
-        # Advisory only - sizing already reduced for fragile
-        # strategies. Don't hard-block since our filtering
-        # creates edge that raw strategies don't have.
-
-        # Anti-pattern filter — scoped to active regime's
-        # strategy only (not global union of all strategies)
+        # Anti-pattern filter
         if self._anti_patterns and hasattr(current_time, "hour"):
             try:
                 strategy_name = params.get("strategy", "")
-                # Match strategy key (e.g. "A52Strategy",
-                # "AdaptiveMLStrategy") in anti_patterns
                 ap = None
                 for key, val in self._anti_patterns.items():
-                    if (strategy_name in key
-                            and isinstance(val, dict)):
+                    if strategy_name in key and isinstance(val, dict):
                         ap = val
                         break
                 if ap:
                     toxic_hours = ap.get("toxic_hours", [])
                     if current_time.hour in toxic_hours:
+                        self._log_rejection(
+                            pair,
+                            side,
+                            f"anti_pattern_hour_{current_time.hour}",
+                            current_time,
+                        )
                         return False
                     toxic_days = ap.get("toxic_days", [])
                     if current_time.weekday() in toxic_days:
+                        self._log_rejection(
+                            pair,
+                            side,
+                            f"anti_pattern_day_{current_time.weekday()}",
+                            current_time,
+                        )
                         return False
             except Exception:
                 pass
 
-        # NEW: Quality model gate — AI-driven trade filtering
-        # Only take trades scoring in top 40% quality
+        # Quality model gate (session-direction prior)
         if self._quality_model_data is not None:
             try:
                 qm = self._quality_model_data
@@ -893,30 +946,42 @@ class AdaptiveMLStrategy(IStrategy):
                 min_quality = thresholds.get("min_quality", 0.5)
 
                 if model and scaler and hasattr(current_time, "hour"):
-                    # Entry-known features only (must match
-                    # train_trade_quality_model() in ml_optimizer.py)
-                    features = np.array([[
-                        current_time.hour,
-                        current_time.weekday(),
-                        1 if side == "short" else 0,
-                    ]])
+                    features = np.array(
+                        [
+                            [
+                                current_time.hour,
+                                current_time.weekday(),
+                                1 if side == "short" else 0,
+                            ]
+                        ]
+                    )
                     scaled = scaler.transform(features)
                     quality = model.predict_proba(scaled)[0][1]
 
                     if quality < min_quality:
-                        return False  # same threshold everywhere
+                        self._log_rejection(
+                            pair,
+                            side,
+                            f"quality_model_{quality:.3f}<{min_quality:.3f}",
+                            current_time,
+                        )
+                        return False
             except Exception:
                 pass  # fail open — don't block on model error
 
-        # NEW: Regime transition filter — reduce entry during
-        # regime shifts (high uncertainty)
-        # Only block in live mode; in backtest, just reduce size
+        # Regime transition filter
         if len(dataframe) >= 12:
-            regime = last.get("regime", 2)
-            prev_regime = dataframe.iloc[-12].get("regime", regime)
-            if regime != prev_regime:
+            regime_now = last.get("regime", 2)
+            prev_regime = dataframe.iloc[-12].get("regime", regime_now)
+            if regime_now != prev_regime:
                 ds = abs(last.get("direction_score", 0))
-                if ds < 0.5:  # need moderate signal
+                if ds < 0.5:
+                    self._log_rejection(
+                        pair,
+                        side,
+                        f"regime_transition_{prev_regime}->{regime_now}",
+                        current_time,
+                    )
                     return False
 
         self._daily_trades += 1
@@ -925,8 +990,14 @@ class AdaptiveMLStrategy(IStrategy):
     # ─── Dynamic Stoploss (MFE-Calibrated) ────────────────
 
     def custom_stoploss(
-        self, pair, trade, current_time, current_rate,
-        current_profit, after_fill, **kwargs
+        self,
+        pair,
+        trade,
+        current_time,
+        current_rate,
+        current_profit,
+        after_fill,
+        **kwargs,
     ):
         """
         PRO: MFE-calibrated dynamic stoploss.
@@ -946,9 +1017,7 @@ class AdaptiveMLStrategy(IStrategy):
         trail_start = params.get("trail_start", 0.005)
         trail_step = params.get("trail_step", 0.003)
 
-        trade_dur = (
-            current_time - trade.open_date_utc
-        ).total_seconds() / 60
+        trade_dur = (current_time - trade.open_date_utc).total_seconds() / 60
 
         # Phase 3: Big winner — trail to lock gains
         if current_profit > trail_start:
@@ -970,45 +1039,34 @@ class AdaptiveMLStrategy(IStrategy):
     # ─── Dynamic ROI ─────────────────────────────────────
 
     def custom_exit(
-        self, pair, trade, current_time, current_rate,
-        current_profit, **kwargs
+        self, pair, trade, current_time, current_rate, current_profit, **kwargs
     ):
         """
         Self-learned ROI exit: use per-regime ROI table from
         ml_optimizer duration bucket analysis.
         """
-        trade_dur = (
-            current_time - trade.open_date_utc
-        ).total_seconds() / 60
+        trade_dur = (current_time - trade.open_date_utc).total_seconds() / 60
 
         # No time-based exits — pure ROI + SL only
         # Time exits always lose money in backtest.
 
         if trade.enter_tag and "_r" in trade.enter_tag:
             try:
-                regime = int(
-                    trade.enter_tag.split("_r")[1][0]
-                )
+                regime = int(trade.enter_tag.split("_r")[1][0])
                 params = self._get_regime_params(regime)
                 roi_table = params.get("roi_table", {})
 
                 if roi_table:
                     applicable_roi = None
                     for mins in sorted(
-                        roi_table.keys(),
-                        key=lambda x: int(x),
-                        reverse=True
+                        roi_table.keys(), key=lambda x: int(x), reverse=True
                     ):
                         if trade_dur >= int(mins):
                             applicable_roi = roi_table[mins]
                             break
 
-                    if (applicable_roi
-                            and current_profit
-                            >= applicable_roi):
-                        return "ml_roi_r{}_{}m".format(
-                            regime, int(trade_dur)
-                        )
+                    if applicable_roi and current_profit >= applicable_roi:
+                        return "ml_roi_r{}_{}m".format(regime, int(trade_dur))
 
             except (ValueError, IndexError, AttributeError):
                 pass
@@ -1020,9 +1078,16 @@ class AdaptiveMLStrategy(IStrategy):
     # Uses trade.calc_profit_ratio for profit tracking.
 
     def confirm_trade_exit(
-        self, pair, trade, order_type, amount, rate,
-        time_in_force, exit_reason, current_time,
-        **kwargs
+        self,
+        pair,
+        trade,
+        order_type,
+        amount,
+        rate,
+        time_in_force,
+        exit_reason,
+        current_time,
+        **kwargs,
     ):
         """
         PRO: Track trade results for discipline systems.
@@ -1036,9 +1101,7 @@ class AdaptiveMLStrategy(IStrategy):
         # Update discipline trackers
         self._recent_results.append(profit)
         if len(self._recent_results) > self._MAX_RECENT:
-            self._recent_results = (
-                self._recent_results[-self._MAX_RECENT:]
-            )
+            self._recent_results = self._recent_results[-self._MAX_RECENT :]
 
         self._daily_pnl += profit
 

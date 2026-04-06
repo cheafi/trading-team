@@ -12,7 +12,6 @@
 # ============================================================
 
 services:
-
   # ─── 📊 Freqtrade — Backtesting & Live Trading Engine ──────
   freqtrade:
     image: freqtradeorg/freqtrade:stable
@@ -74,6 +73,7 @@ services:
     environment:
       - AGENT_API_HOST=agent-runner
       - AGENT_API_PORT=3001
+      - ML_TRAIN_API_KEY=${ML_TRAIN_API_KEY:-}
       - TZ=${TZ:-Asia/Hong_Kong}
     depends_on:
       redis:

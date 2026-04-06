@@ -1,103 +1,133 @@
-# Cheafi — Multi-Agent Algo Trading Platform
+# Cheafi — Development Status & Roadmap
 
-## Current Status (2026-04-01)
+## Current Identity (2026-04-06)
 
-### System Health
-- ✅ All 4 Docker containers running (freqtrade, redis, dashboard, agent-runner)
-- ✅ Freqtrade v2026.2, futures/isolated mode, Binance
-- ✅ Discord bot connected (`Crypto Algo Team#3543`, server: `crypto-algo-team`)
-- ✅ Dashboard live on port 3000
+**ETH/USDT 5m R2 Short Specialist** — research / paper-trading stage.
 
-### Backtest Results (Jan 1 – Mar 29, 2026)
-| Strategy | Trades | P/L | Drawdown | Market |
-|----------|--------|-----|----------|--------|
-| **AdaptiveMLStrategy** | 257 | **-0.62%** | 0.65% | -29.69% |
-| A52 standalone | 1809 | -13.73% | — | -29.69% |
+### What the system actually does
+- Trades ETH/USDT:USDT on Binance Futures (isolated margin)
+- Only R2 (RANGING) short entries are active — other regimes disabled
+- Uses A52 (multi-factor momentum) as primary sub-strategy
+- Rule-based regime detection (ADX/EMA/ATR/BB thresholds)
+- Kelly-blended position sizing with anti-martingale
+- MFE-calibrated trailing stops
+- Quality model gate (3-feature session-direction prior)
+- Anti-pattern filter (toxic hours/days from loss analysis)
+- Decision journal for all trade rejections
 
-The AdaptiveML meta-strategy **outperforms A52 by 22×** and protects capital
-effectively during a -30% market crash.
+### What the system does NOT do (yet)
+- Multi-regime live trading (R0/R1/R3 disabled)
+- Real-time ML regime classification (trained model exists but unused)
+- Deep trade quality intelligence (model uses only hour/weekday/side)
+- Multi-pair trading (only ETH/USDT:USDT whitelisted)
+- Auto-download fresh data + rebacktest + retrain pipeline
+- The scheduled "ML optimizer" agent refreshes state, does NOT retrain
 
 ---
 
-## Recent Improvements (v4)
+## Backtest Results (Jan 1 – Mar 29, 2026)
 
-### 14 Bug Fixes
-1. `can_short = True` — was False, blocking all short trades
-2. Stoploss min/max inversion — proper bounds applied
-3. Premature exits in A52/A51/OPT — changed OR to AND with confirmation
-4. `_merge_informative` — fixed broken merge with `pd.merge_asof`
-5. Sub-regime detection — vectorized (was O(n) row-by-row loop)
-6. Symmetric `confirm_trade_entry` for all sub-strategies
-7. Config switched from spot to futures mode with `:USDT` pair suffixes
+| Strategy | Trades | P/L | Drawdown | Market |
+|----------|--------|-----|----------|--------|
+| AdaptiveMLStrategy | 257 | -0.62% | 0.65% | -29.69% |
+| A52 standalone | 1809 | -13.73% | — | -29.69% |
 
-### Intelligence Upgrades
-- **Quality model gate** — AI-driven trade filtering with backtest guard
-- **Regime transition filter** — reduces entry during regime shifts
-- **Anti-pattern detection** — learns toxic hours/days from losing trades
-- **Adaptive scoring** — 60% recent + 40% overall recency bias
-- **Volatility spike exit** — auto-exits when ATR spikes during regime change
-- **Progressive trailing stop** — locks in 60-75% of gains based on profit level
-- **Per-candle A52 fallback** — fills gaps when primary strategy doesn't fire
-- **1h trend filter for fallback longs** — prevents catching falling knives
-- **Regime-adaptive thresholds** — different dir_thresh / vol_mult per regime
-- **Wider R3 stoploss** — 1.2% for volatile regime (was 0.6%)
-
-### Entry Condition Tuning (Data-Driven)
-| Parameter | Before | After | Reason |
-|-----------|--------|-------|--------|
-| dir_thresh (ranging) | 0.50 | 0.20 | Mean dir_score in R2 ≈ 0.0 |
-| dir_thresh (trending) | 0.50 | 0.35 | Mean dir_score in R0 ≈ 0.4 |
-| vol_mult (ranging) | 1.30 | 1.00 | Low vol normal in ranging |
-| vol_mult (trending) | 1.30 | 1.20 | Want confirmation |
-| RSI band (A51) | 40-60 | 35-65 | Was filtering 75% of candles |
-| Volume (A31) | 1.5× | 0.8× | Squeeze_fire already rare |
-| R3 fallback | enabled | **disabled** | Caused 71% of losses |
+The meta-strategy protects capital effectively during a -30% crash,
+but the edge is narrow and R2 is marked `is_robust: false`.
 
 ---
 
 ## Architecture
 
-### Regime System
-| ID | Regime | Strategy | Fallback |
-|----|--------|----------|----------|
-| R0 | TRENDING_UP | A31 (squeeze) | A52 |
-| R1 | TRENDING_DOWN | A51 (VWAP scalp) | A52 |
-| R2 | RANGING | A51 (VWAP scalp) | A52 |
-| R3 | VOLATILE | A31 (squeeze) | None |
-
-### Sub-Strategies
-- **A52**: Multi-TF momentum + mean-reversion (110 trades/month standalone)
-- **A51**: VWAP + order block scalping (c=0.35)
-- **A31**: Volatility squeeze breakout (c=0.80, rare signals)
-- **OPT**: Ichimoku + SuperTrend trend follower (c=0.65)
+### Live Regime Mapping
+| ID | Regime | Strategy | Status |
+|----|--------|----------|--------|
+| R0 | TRENDING_UP | A31 (Squeeze) | ⛔ Disabled |
+| R1 | TRENDING_DOWN | A51 (VWAP) | ⛔ Disabled |
+| **R2** | **RANGING** | **A52 (Momentum, short-only)** | ✅ Active |
+| R3 | VOLATILE | A52 (Momentum) | ⛔ Disabled |
 
 ### ML Pipeline (`ml_optimizer.py`)
-- Regime model (RandomForest)
-- Quality model (XGBoost) for trade filtering
-- Walk-forward validation
-- Monte Carlo simulation
-- Anti-pattern detection (toxic hours/days)
-- Adaptive scoring with recency bias
+- Regime model — **GradientBoostingClassifier** (trained but not used live)
+- Quality model — **GradientBoostingClassifier** (3 features: hour, weekday, side)
+- Walk-forward validation (coarse robustness heuristic, not full replay)
+- Anti-pattern detection (toxic hours/days from loss analysis)
 - Kelly criterion position sizing
+
+### Agent Schedule
+| Agent | Schedule | What it actually does |
+|---|---|---|
+| Risk Manager | */5 min | Reads DD from FT API, alerts if > 15% |
+| Signal Engineer | */5 min | Detects regime, reports entry conditions |
+| Quant Researcher | */15 min | Analyzes trade P&L distribution |
+| Market Analyst | */10 min | ETH volume + trend snapshot |
+| Backtester | 2h | Triggers backtest if asked (via API) |
+| ML State Monitor | 2h | **Reads** params/logs, publishes to Redis (no training) |
+| Security Auditor | 6h | FT version check, health, pair locks |
+
+---
+
+## Completed (Iterations 1–4)
+
+### Iteration 1 — Security & Risk
+- [x] Fixed `can_short = True` (was blocking all shorts)
+- [x] Fixed stoploss bounds, premature exits
+- [x] Vectorized sub-regime detection
+- [x] Added futures pair guard
+- [x] Narrowed CORS from wildcard to localhost
+
+### Iteration 2 — Data Integrity
+- [x] Fixed regime model data leakage (removed future-known features)
+- [x] Aligned config_backtest.json with production limits
+- [x] Fixed broken shell variable syntax in config.json
+- [x] Baked ML deps into Dockerfile.agents
+
+### Iteration 3 — Config & API
+- [x] Fixed strategy defaults (R1→A51, R2→A52, R3→A52)
+- [x] Fixed drawdown normalization guard
+- [x] Added server-side API route for ML training
+- [x] Added Discord API key authentication
+- [x] Cleaned dead R1 long branch
+
+### Iteration 4 — Truthfulness
+- [x] Renamed ML optimizer agent → ML State Monitor
+- [x] Fixed Discord "training complete" for state refreshes → "state refresh"
+- [x] Fixed cmdTrain/cmdBacktest to check API response before confirming
+- [x] Added ML state refresh after training completes
+- [x] Passed ML_TRAIN_API_KEY to dashboard container
+- [x] Added rejection journal to confirm_trade_entry
+- [x] Removed dead REGIME_MODEL_PATH, PARAM_MODEL_PATH
+- [x] Rewrote README.md (was malformed with literal \n)
+- [x] Updated all docs for honest ETH 5m specialist identity
 
 ---
 
 ## Roadmap
 
-### Short Term
-- [ ] Hyperopt for per-regime ROI/SL optimization
-- [ ] Add more pairs (DOGE, ADA, AVAX) for diversification
-- [ ] Retrain ML models on latest data
-- [ ] Test in bull market conditions
+### Priority 1 — Operator Observability
+- [ ] Dashboard panel: latest trade rejection reasons
+- [ ] Dashboard panel: entry-tag distribution (what signals fire)
+- [ ] Dashboard panel: exit-reason distribution (SL vs ROI vs time)
+- [ ] Dashboard panel: live regime from current candle analysis
+- [ ] Dashboard panel: session PnL by UTC block
+- [ ] Add durable DB (Postgres/TimescaleDB) for trades and decisions
 
-### Medium Term
-- [ ] Live paper trading validation (1 week min)
-- [ ] Position sizing optimization (Kelly fraction)
-- [ ] Cross-pair correlation filter
-- [ ] Dashboard: show regime, entry tags, live P&L
+### Priority 2 — Control Plane
+- [ ] Move to slash commands in Discord (not prefix-message)
+- [ ] Add role-based permissions for train/backtest/pause
+- [ ] Operator audit trail for web-triggered actions
+- [ ] Full training pipeline: download data → backtest → retrain → publish
 
-### Long Term
-- [ ] Real money deployment with progressive sizing
-- [ ] Multi-exchange support
-- [ ] Automated model retraining pipeline
-- [ ] Alert system for anomalous behavior
+### Priority 3 — ML Integrity
+- [ ] Wire regime model into live decisions (or remove training code)
+- [ ] Rebuild quality model with richer entry-known features
+- [ ] Proper walk-forward: refit per slice + forward replay
+- [ ] Validate R0/R1/R3 edges before re-enabling
+
+### Priority 4 — Code Quality
+- [ ] Split coordinator.mjs (1140 lines) into modules
+- [ ] Split ml_optimizer.py (2083 lines) into modules
+- [ ] Use `spawn()` with argv arrays instead of `exec()` for commands
+- [ ] Add `package-lock.json` + `npm ci` for reproducible builds
+- [ ] Standardize dashboard language (currently mixed Chinese/English)
+- [ ] Add explicit timezone labels to all timestamps
