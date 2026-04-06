@@ -60,7 +60,7 @@ if [ "$SKIP_BACKTEST" = false ]; then
     for STRATEGY in "${STRATEGIES[@]}"; do
         echo "  🏃 $STRATEGY..."
         docker compose run --rm freqtrade backtesting \
-            --config /freqtrade/config/config.json \
+            --config /freqtrade/config/config_backtest.json \
             --strategy "$STRATEGY" \
             --strategy-path /freqtrade/user_data/strategies \
             --timerange "$TIMERANGE" \

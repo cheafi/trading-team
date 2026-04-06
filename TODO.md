@@ -100,12 +100,26 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Rewrote README.md (was malformed with literal \n)
 - [x] Updated all docs for honest ETH 5m specialist identity
 
+### Iteration 5 — Security & UI
+- [x] Replaced exec() with spawn() + argv arrays (downloadData, runBacktests)
+- [x] Renamed Chinese agent labels to English across all UI
+- [x] Added Operator Diagnostics panel (rejection journal viewer)
+- [x] Added /api/diagnostics/rejections endpoint
+- [x] Generated agents/package-lock.json for reproducible builds
+- [x] Fixed TeamHeader date locale to en-CA + explicit UTC label
+
+### Iteration 6 — Identity & Honesty
+- [x] Fixed pair-universe identity: VolumePairList → StaticPairList in config.json
+- [x] Fixed ml-train.sh: backtests now use config_backtest.json (StaticPairList)
+- [x] Fixed runMarketAnalyst: removed hardcoded ETH pair, uses actual open trades
+- [x] Fixed best_params.json R2 direction_bias: "long" → "short" (matches strategy)
+
 ---
 
 ## Roadmap
 
 ### Priority 1 — Operator Observability
-- [ ] Dashboard panel: latest trade rejection reasons
+- [x] Dashboard panel: latest trade rejection reasons
 - [ ] Dashboard panel: entry-tag distribution (what signals fire)
 - [ ] Dashboard panel: exit-reason distribution (SL vs ROI vs time)
 - [ ] Dashboard panel: live regime from current candle analysis
@@ -117,6 +131,7 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [ ] Add role-based permissions for train/backtest/pause
 - [ ] Operator audit trail for web-triggered actions
 - [ ] Full training pipeline: download data → backtest → retrain → publish
+- [ ] Explicit training UX: "retrain from existing backtests" vs "full refresh"
 
 ### Priority 3 — ML Integrity
 - [ ] Wire regime model into live decisions (or remove training code)
@@ -125,9 +140,9 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [ ] Validate R0/R1/R3 edges before re-enabling
 
 ### Priority 4 — Code Quality
-- [ ] Split coordinator.mjs (1140 lines) into modules
+- [x] Use `spawn()` with argv arrays instead of `exec()` for commands
+- [x] Add `package-lock.json` + `npm ci` for reproducible builds
+- [x] Standardize dashboard language (currently mixed Chinese/English)
+- [x] Add explicit timezone labels to all timestamps
+- [ ] Split coordinator.mjs (1340 lines) into modules
 - [ ] Split ml_optimizer.py (2083 lines) into modules
-- [ ] Use `spawn()` with argv arrays instead of `exec()` for commands
-- [ ] Add `package-lock.json` + `npm ci` for reproducible builds
-- [ ] Standardize dashboard language (currently mixed Chinese/English)
-- [ ] Add explicit timezone labels to all timestamps

@@ -293,12 +293,13 @@ async function runMarketAnalyst(agent) {
   log.info(`[${agent.id}] Scanning portfolio posture...`);
 
   const status = await ftApi("/status");
-  const pair = "ETH/USDT:USDT";
 
-  // Portfolio posture: derived from open trade directions
-  // (not an independent market analysis — requires candle data for that)
+  // Portfolio posture: derived from open trade directions.
+  // This agent does NOT perform independent market analysis
+  // (that would require candle data the coordinator doesn't fetch).
   const longTrades = status?.filter((t) => !t.is_short)?.length || 0;
   const shortTrades = status?.filter((t) => t.is_short)?.length || 0;
+  const pairs = [...new Set(status?.map((t) => t.pair) || [])];
 
   const posture =
     longTrades > shortTrades
@@ -310,15 +311,15 @@ async function runMarketAnalyst(agent) {
   const finding = {
     timestamp: new Date().toISOString(),
     agent: agent.id,
-    type: "market-scan",
+    type: "portfolio-posture",
     data: {
-      pair,
+      pairs,
       posture,
       longTrades,
       shortTrades,
       timestamp: Date.now(),
     },
-    summary: `${pair} posture: ${posture} (L:${longTrades} S:${shortTrades})`,
+    summary: `Posture: ${posture} (L:${longTrades} S:${shortTrades}) | ${pairs.length} pair(s)`,
   };
 
   agent.findings.unshift(finding);

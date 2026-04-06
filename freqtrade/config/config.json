@@ -76,10 +76,7 @@
 
   "pairlists": [
     {
-      "method": "VolumePairList",
-      "number_assets": 15,
-      "sort_key": "quoteVolume",
-      "refresh_period": 1800
+      "method": "StaticPairList"
     },
     {
       "method": "AgeFilter",
