@@ -182,3 +182,25 @@ export async function triggerMLTrain(): Promise<{ status: string; jobId?: string
   });
   return res.json();
 }
+
+// ─── Diagnostics ─────────────────────────────────────────
+
+export interface RejectionEntry {
+  timestamp: string;
+  pair: string;
+  side: string;
+  reason: string;
+  regime: string;
+  details?: Record<string, unknown>;
+}
+
+export function useRejections(limit = 50) {
+  return useSWR<RejectionEntry[]>(
+    `/api/diagnostics/rejections?limit=${limit}`,
+    fetcher,
+    {
+      refreshInterval: 30000,
+      fallbackData: [],
+    }
+  );
+}

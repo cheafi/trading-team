@@ -7,7 +7,7 @@
  * - Agents can dispatch sub-tasks to each other
  */
 import { createServer } from "node:http";
-import { execSync, exec, spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import Redis from "ioredis";
 import { CronJob } from "cron";
 import pino from "pino";
@@ -68,7 +68,7 @@ async function ftApi(endpoint, method = "GET", body = null) {
 const agents = [
   {
     id: "quant-researcher",
-    name: "量化研究員",
+    name: "Quant Researcher",
     emoji: "🔬",
     schedule: "*/15 * * * *", // every 15 min
     status: "idle",
@@ -77,7 +77,7 @@ const agents = [
   },
   {
     id: "backtester",
-    name: "回測工程師",
+    name: "Backtester",
     emoji: "📊",
     schedule: "0 */2 * * *", // every 2 hours
     status: "idle",
@@ -86,7 +86,7 @@ const agents = [
   },
   {
     id: "risk-manager",
-    name: "風控官 CRO",
+    name: "Risk Manager",
     emoji: "🛡️",
     schedule: "*/5 * * * *", // every 5 min
     status: "idle",
@@ -95,7 +95,7 @@ const agents = [
   },
   {
     id: "signal-engineer",
-    name: "信號工程師",
+    name: "Signal Engineer",
     emoji: "📡",
     schedule: "*/5 * * * *", // every 5 min
     status: "idle",
@@ -104,7 +104,7 @@ const agents = [
   },
   {
     id: "market-analyst",
-    name: "市場分析師",
+    name: "Market Analyst",
     emoji: "🌍",
     schedule: "*/10 * * * *", // every 10 min
     status: "idle",
@@ -113,7 +113,7 @@ const agents = [
   },
   {
     id: "security-auditor",
-    name: "安全審計官",
+    name: "Security Auditor",
     emoji: "🔒",
     schedule: "0 */6 * * *", // every 6 hours
     status: "idle",
@@ -122,7 +122,7 @@ const agents = [
   },
   {
     id: "ml-optimizer",
-    name: "ML 狀態監視",
+    name: "ML State Monitor",
     emoji: "🧠",
     schedule: "0 */2 * * *", // every 2 hours — refresh ML state (does NOT retrain)
     status: "idle",
@@ -1092,6 +1092,31 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // ─── Diagnostics API ───────────────────────────────────────
+    // Rejection journal — why the bot didn't trade
+    if (url.pathname === "/api/diagnostics/rejections") {
+      try {
+        const fs = await import("node:fs/promises");
+        const raw = await fs.readFile(
+          "/freqtrade/user_data/ml_models/rejection_journal.json",
+          "utf8",
+        );
+        const entries = JSON.parse(raw);
+        const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+        // Return most recent entries
+        const recent = Array.isArray(entries)
+          ? entries.slice(-limit).reverse()
+          : [];
+        res.writeHead(200);
+        res.end(JSON.stringify(recent));
+      } catch (err) {
+        // File may not exist yet — return empty
+        res.writeHead(200);
+        res.end(JSON.stringify([]));
+      }
+      return;
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: "Not found" }));
   } catch (err) {
@@ -1111,24 +1136,37 @@ function getDefaultTimerange() {
 }
 
 async function downloadData(pairs, timeframes, timerange) {
-  // Sanitize inputs to prevent command injection
+  // Sanitize inputs
   const safePat = /^[a-zA-Z0-9/:_\-. ]+$/;
-  const pairArg = pairs.filter((p) => safePat.test(p)).join(" ");
-  const tfArg = timeframes.filter((t) => safePat.test(t)).join(" ");
+  const safePairs = pairs.filter((p) => safePat.test(p));
+  const safeTfs = timeframes.filter((t) => safePat.test(t));
   const safeTimerange = /^\d{8}-\d{8}$/.test(timerange)
     ? timerange
     : "20240101-20241231";
-  if (!pairArg || !tfArg) {
+  if (!safePairs.length || !safeTfs.length) {
     throw new Error("Invalid input characters in download params");
   }
-  const cmd = `docker compose run --rm freqtrade download-data --config /freqtrade/config/config.json --pairs ${pairArg} --timeframes ${tfArg} --timerange ${safeTimerange}`;
+
+  const args = [
+    "compose", "run", "--rm", "freqtrade",
+    "download-data",
+    "--config", "/freqtrade/config/config.json",
+    "--pairs", ...safePairs,
+    "--timeframes", ...safeTfs,
+    "--timerange", safeTimerange,
+  ];
 
   return new Promise((resolve, reject) => {
-    log.info({ cmd }, "Downloading data...");
-    exec(cmd, { cwd: "/app", timeout: 600_000 }, (err, stdout, stderr) => {
-      if (err) {
-        log.error({ err, stderr }, "Data download failed");
-        reject(err);
+    log.info({ args }, "Downloading data...");
+    const proc = spawn("docker", args, { cwd: "/app", timeout: 600_000 });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d) => { stdout += d; });
+    proc.stderr.on("data", (d) => { stderr += d; });
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        log.error({ code, stderr }, "Data download failed");
+        reject(new Error(`download-data exited with code ${code}: ${stderr}`));
         return;
       }
       log.info("Data download complete");
@@ -1137,6 +1175,10 @@ async function downloadData(pairs, timeframes, timerange) {
         `✅ Data download complete: ${pairs.join(", ")}`,
       );
       resolve(stdout);
+    });
+    proc.on("error", (err) => {
+      log.error({ err }, "Data download spawn error");
+      reject(err);
     });
   });
 }
@@ -1154,14 +1196,26 @@ async function runBacktests(strategies, timerange) {
         ? timerange
         : "20240101-20241231";
       const output = await new Promise((resolve, reject) => {
-        exec(
-          `docker compose run --rm freqtrade backtesting --config /freqtrade/config/config_backtest.json --strategy ${safeStrategy} --strategy-path /freqtrade/user_data/strategies --timerange ${safeTimerange} --timeframe 5m --enable-protections --export trades`,
-          { cwd: "/app", timeout: 600_000 },
-          (err, stdout, stderr) => {
-            if (err) reject(err);
-            else resolve(stdout + stderr);
-          },
-        );
+        const args = [
+          "compose", "run", "--rm", "freqtrade",
+          "backtesting",
+          "--config", "/freqtrade/config/config_backtest.json",
+          "--strategy", safeStrategy,
+          "--strategy-path", "/freqtrade/user_data/strategies",
+          "--timerange", safeTimerange,
+          "--timeframe", "5m",
+          "--enable-protections",
+          "--export", "trades",
+        ];
+        const proc = spawn("docker", args, { cwd: "/app", timeout: 600_000 });
+        let out = "";
+        proc.stdout.on("data", (d) => { out += d; });
+        proc.stderr.on("data", (d) => { out += d; });
+        proc.on("close", (code) => {
+          if (code !== 0) reject(new Error(`backtesting exited ${code}: ${out.slice(-500)}`));
+          else resolve(out);
+        });
+        proc.on("error", reject);
       });
 
       // Parse backtest output

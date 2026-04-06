@@ -23,6 +23,10 @@ const nextConfig = {
         source: "/api/ml/:path*",
         destination: `http://${process.env.AGENT_API_HOST || "agent-runner"}:${process.env.AGENT_API_PORT || "3001"}/api/ml/:path*`,
       },
+      {
+        source: "/api/diagnostics/:path*",
+        destination: `http://${process.env.AGENT_API_HOST || "agent-runner"}:${process.env.AGENT_API_PORT || "3001"}/api/diagnostics/:path*`,
+      },
     ];
   },
 };

@@ -57,7 +57,7 @@ export function TeamHeader() {
           </span>
         </div>
         <div className="text-xs text-slate-500 font-mono">
-          {new Date().toLocaleDateString("zh-TW")}
+          {new Date().toLocaleDateString("en-CA")} UTC
         </div>
       </div>
     </header>

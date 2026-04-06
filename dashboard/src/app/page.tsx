@@ -8,6 +8,7 @@ import { MLPanel } from "@/components/MLPanel";
 import { TradesPanel } from "@/components/TradesPanel";
 import { PairPerformance } from "@/components/PairPerformance";
 import { EquityMini } from "@/components/EquityMini";
+import { DiagnosticsPanel } from "@/components/DiagnosticsPanel";
 
 export default function Home() {
   return (
@@ -31,7 +32,7 @@ export default function Home() {
       {/* ML Adaptive Engine */}
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-          <span className="text-xl">🧠</span> ML 自適應引擎 Adaptive Engine
+          <span className="text-xl">🧠</span> ML Adaptive Engine
         </h2>
         <MLPanel />
       </section>
@@ -39,26 +40,34 @@ export default function Home() {
       {/* Agent cards */}
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-          <span className="text-xl">🤖</span> 團隊成員 Team Agents
+          <span className="text-xl">🤖</span> Team Agents
         </h2>
         <AgentGrid />
       </section>
 
       {/* Bottom row: Strategy Ranking + Findings */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <section>
           <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-            <span className="text-xl">📊</span> 策略排名 Strategy Ranking
+            <span className="text-xl">📊</span> Strategy Ranking
           </h2>
           <StrategyRanking />
         </section>
         <section>
           <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-            <span className="text-xl">📋</span> 最新發現 Latest Findings
+            <span className="text-xl">📋</span> Latest Findings
           </h2>
           <FindingsPanel />
         </section>
       </div>
+
+      {/* Diagnostics: rejection journal */}
+      <section className="mb-6">
+        <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
+          <span className="text-xl">🔍</span> Operator Diagnostics
+        </h2>
+        <DiagnosticsPanel />
+      </section>
     </main>
   );
 }
