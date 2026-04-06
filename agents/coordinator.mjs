@@ -1301,7 +1301,7 @@ async function getBacktestResults() {
 
 // ─── Startup ───────────────────────────────────────────────────
 async function main() {
-  log.info("🚀 Cheafi Trading Team Agent Coordinator starting...");
+  log.info("🚀 CC Trading Team Agent Coordinator starting...");
   log.info(`📡 Freqtrade API: ${FREQTRADE_API}`);
   log.info(`🗄️  Redis: ${REDIS_URL}`);
 

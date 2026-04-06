@@ -1,8 +1,8 @@
-# Cheafi — AI Coding Agent Instructions
+# CC — AI Coding Agent Instructions
 
 ## System Identity (be honest)
 
-**Cheafi** is currently an **ETH/USDT 5m R2 short specialist** — a single-pair, single-regime trading bot in research/paper-trading stage.
+**CC** is currently an **ETH/USDT 5m R2 short specialist** — a single-pair, single-regime trading bot in research/paper-trading stage.
 
 The multi-regime infrastructure exists but only R2 (RANGING, short-only) is active in production. Do NOT describe this system as a "multi-regime adaptive engine" unless other regimes are re-enabled in `populate_entry_trend()`.
 

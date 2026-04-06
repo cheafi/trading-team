@@ -1,4 +1,4 @@
-# Cheafi — Development Status & Roadmap
+# CC — Development Status & Roadmap
 
 ## Current Identity (2026-04-06)
 

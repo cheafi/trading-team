@@ -1,4 +1,4 @@
-# Cheafi Trading Team
+# CC Trading Team
 
 ## SOUL — Team Mission
 

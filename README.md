@@ -1,4 +1,4 @@
-# 🐼 Cheafi — ETH/USDT 5m Short Specialist
+# 🐼 CC — ETH/USDT 5m Short Specialist
 
 > Multi-agent algo trading platform for ETH/USDT Futures on Binance.
 > Currently running **one active regime** (R2 RANGING, short-only).
@@ -179,4 +179,4 @@ trading-team/
 
 ---
 
-**Cheafi** — a well-instrumented ETH 5m specialist under active research 🐼
+**CC** — a well-instrumented ETH 5m specialist under active research 🐼

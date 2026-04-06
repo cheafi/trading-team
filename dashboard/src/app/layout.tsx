@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cheafi | AI Trading Dashboard",
+  title: "CC | AI Trading Dashboard",
   description: "Multi-agent algo trading dashboard — Multi-Pair Futures",
 };
 

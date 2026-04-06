@@ -1,5 +1,5 @@
 # ============================================================
-# 🏆 Cheafi — Multi-Agent Algo Trading Platform
+# 🏆 CC — Multi-Agent Algo Trading Platform
 # ============================================================
 # Architecture inspired by garrytan/gstack multi-agent approach
 # Uses: Freqtrade (backtest/live) + Next.js Dashboard + Redis

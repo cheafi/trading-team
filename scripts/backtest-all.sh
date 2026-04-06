@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 STRATEGIES=("A52Strategy" "OPTStrategy" "A51Strategy" "A31Strategy" "AdaptiveMLStrategy")
 TIMERANGE="${1:-20240101-20241231}"
 
-echo "📊 Cheafi Trading Team — Backtest Suite"
+echo "📊 CC Trading Team — Backtest Suite"
 echo "─────────────────────────────────────────"
 echo "Timerange: $TIMERANGE"
 echo ""

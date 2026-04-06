@@ -25,7 +25,7 @@ FT_API="${FREQTRADE_API:-http://freqtrade:8080}"
 FT_USER="${FREQTRADE_API_USER:-freqtrader}"
 FT_PASS="${FREQTRADE_API_PASSWORD:-SuperSecure123}"
 
-echo "🧠 Cheafi ML Training Pipeline (container mode)"
+echo "🧠 CC ML Training Pipeline (container mode)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📂 Optimizer : $OPTIMIZER"
 echo "📂 Backtests : $BACKTEST_DIR"

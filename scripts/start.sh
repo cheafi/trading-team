@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────
-# Cheafi — Quick Start Script
+# CC — Quick Start Script
 # ──────────────────────────────────────────────────
 set -euo pipefail
 
@@ -9,7 +9,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 
-echo "� Cheafi Trading Team — Starting..."
+echo "� CC Trading Team — Starting..."
 echo "─────────────────────────────────"
 
 # Create .env from example if missing

@@ -97,7 +97,7 @@
     "process_throttle_secs": 5
   },
 
-  "bot_name": "Cheafi-Trading-Bot",
+  "bot_name": "CC-Trading-Bot",
 
   "initial_state": "running",
 

@@ -7,7 +7,7 @@ TIMERANGE="20240101-20260329"
 STRATEGIES=("OPTStrategy" "A51Strategy" "A31Strategy" "AdaptiveMLStrategy")
 SUMMARY_FILE="freqtrade/user_data/backtest_results/backtest_summary.txt"
 
-echo "📊 Cheafi — Running all backtests (${#STRATEGIES[@]} strategies)" > "$SUMMARY_FILE"
+echo "📊 CC — Running all backtests (${#STRATEGIES[@]} strategies)" > "$SUMMARY_FILE"
 echo "Timerange: $TIMERANGE" >> "$SUMMARY_FILE"
 echo "Started: $(date)" >> "$SUMMARY_FILE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> "$SUMMARY_FILE"

@@ -1,5 +1,5 @@
 /**
- * Discord Bot — Cheafi Trading Team
+ * Discord Bot — CC Trading Team
  * Clean, aligned embeds with consistent structure.
  */
 import { Client, GatewayIntentBits, EmbedBuilder } from "discord.js";
@@ -205,7 +205,7 @@ async function sendOnlineEmbed() {
   const h = await api("/health");
   const embed = new EmbedBuilder()
     .setColor(0x00ff88)
-    .setTitle("\ud83d\ude80 Cheafi \u2014 Online")
+    .setTitle("\ud83d\ude80 CC \u2014 Online")
     .setDescription(
       [
         "```yml",
@@ -233,7 +233,7 @@ async function sendOnlineEmbed() {
         inline: true,
       },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c \u2022 Digest every 4h" })
+    .setFooter({ text: "CC \ud83d\udc3c \u2022 Digest every 4h" })
     .setTimestamp();
   await tradingChannel.send({ embeds: [embed] }).catch(() => {});
 }
@@ -280,7 +280,7 @@ async function cmdHelp(msg) {
         inline: false,
       },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await msg.reply({ embeds: [e] });
 }
@@ -345,7 +345,7 @@ function buildPnL(profit, trades) {
         inline: true,
       },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
 }
 
@@ -393,7 +393,7 @@ function buildRisk(profit) {
         inline: true,
       },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
 }
 
@@ -485,7 +485,7 @@ function buildML(ml, history) {
     });
   }
 
-  return e.setFooter({ text: "Cheafi \ud83d\udc3c" }).setTimestamp();
+  return e.setFooter({ text: "CC \ud83d\udc3c" }).setTimestamp();
 }
 
 async function cmdAgents(msg) {
@@ -512,7 +512,7 @@ function buildAgents(agents) {
     .setColor(0x3498db)
     .setTitle(`\ud83e\udd16 Agents (${agents.length})`)
     .setDescription(lines.join("\n\n"))
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
 }
 
@@ -545,7 +545,7 @@ async function cmdStrategies(msg) {
       { name: "Profit Factor", value: `\`${getPF(p)}\``, inline: true },
       { name: "Sharpe", value: `\`${num(p?.sharpe)}\``, inline: true },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await msg.reply({ embeds: [e] });
 }
@@ -576,7 +576,7 @@ async function cmdFindings(msg) {
         .setTitle("\ud83d\udccb Latest Findings")
         .setDescription(lines.join("\n\n"))
         .setFooter({
-          text: `${Math.min(f.length, 8)} shown \u2022 Cheafi \ud83d\udc3c`,
+          text: `${Math.min(f.length, 8)} shown \u2022 CC \ud83d\udc3c`,
         })
         .setTimestamp(),
     ],
@@ -594,7 +594,7 @@ async function cmdTrades(msg) {
           .setDescription(
             "```\n\ud83d\ude34 No open positions\n   Waiting for R2 setup...\n```",
           )
-          .setFooter({ text: "Cheafi \ud83d\udc3c" })
+          .setFooter({ text: "CC \ud83d\udc3c" })
           .setTimestamp(),
       ],
     });
@@ -619,7 +619,7 @@ async function cmdTrades(msg) {
         "```",
       ].join("\n"),
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await msg.reply({ embeds: [e] });
 }
@@ -657,7 +657,7 @@ async function cmdPairs(msg) {
         "```",
       ].join("\n"),
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await msg.reply({ embeds: [e] });
 }
@@ -697,7 +697,7 @@ async function cmdSummary(msg) {
         `\ud83d\udcc2 **${open}** open \u00b7 \ud83e\udde0 **${ml?.regime || "\u2014"}** \u00b7 \ud83c\udfc6 **${best}** \u00b7 \ud83d\udc80 **${worst}**`,
       ].join("\n"),
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await msg.reply({ embeds: [e] });
 }
@@ -730,7 +730,7 @@ async function cmdConfig(msg) {
       { name: "Mode", value: "`Futures / Isolated`", inline: true },
       { name: "Direction", value: "`R2 Short Only`", inline: true },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await msg.reply({ embeds: [e] });
 }
@@ -751,7 +751,7 @@ async function cmdBacktest(msg) {
         "```",
       ].join("\n"),
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   const reply = await msg.reply({ embeds: [pending] });
   try {
@@ -773,7 +773,7 @@ async function cmdBacktest(msg) {
             "Use `!results` when complete.",
           ].join("\n"),
         )
-        .setFooter({ text: "Cheafi \ud83d\udc3c" })
+        .setFooter({ text: "CC \ud83d\udc3c" })
         .setTimestamp();
       await reply.edit({ embeds: [ok] });
     } else {
@@ -781,7 +781,7 @@ async function cmdBacktest(msg) {
         .setColor(0xff4444)
         .setTitle("\u274c Backtest Failed to Start")
         .setDescription(`\`\`\`\n${res?.error || "Unknown error"}\n\`\`\``)
-        .setFooter({ text: "Cheafi \ud83d\udc3c" })
+        .setFooter({ text: "CC \ud83d\udc3c" })
         .setTimestamp();
       await reply.edit({ embeds: [fail] });
     }
@@ -792,7 +792,7 @@ async function cmdBacktest(msg) {
       .setDescription(
         `\`\`\`\n${e.message || "Agent runner unavailable"}\n\`\`\``,
       )
-      .setFooter({ text: "Cheafi \ud83d\udc3c" })
+      .setFooter({ text: "CC \ud83d\udc3c" })
       .setTimestamp();
     await reply.edit({ embeds: [fail] });
   }
@@ -803,7 +803,7 @@ async function cmdTrain(msg) {
     .setColor(0x9b59b6)
     .setTitle("\ud83e\udde0 ML Training Requested")
     .setDescription("```\nSubmitting training job...\n```")
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   const reply = await msg.reply({ embeds: [pending] });
   try {
@@ -815,7 +815,7 @@ async function cmdTrain(msg) {
         .setDescription(
           `\`\`\`\nJob: ${res.jobId}\nStatus: Running...\nResults posted when done.\n\`\`\``,
         )
-        .setFooter({ text: "Cheafi \ud83d\udc3c" })
+        .setFooter({ text: "CC \ud83d\udc3c" })
         .setTimestamp();
       await reply.edit({ embeds: [ok] });
     } else {
@@ -823,7 +823,7 @@ async function cmdTrain(msg) {
         .setColor(0xff4444)
         .setTitle("\u274c Training Failed to Start")
         .setDescription(`\`\`\`\n${res?.error || "Unknown error"}\n\`\`\``)
-        .setFooter({ text: "Cheafi \ud83d\udc3c" })
+        .setFooter({ text: "CC \ud83d\udc3c" })
         .setTimestamp();
       await reply.edit({ embeds: [fail] });
     }
@@ -834,7 +834,7 @@ async function cmdTrain(msg) {
       .setDescription(
         `\`\`\`\n${e.message || "Agent runner unavailable"}\n\`\`\``,
       )
-      .setFooter({ text: "Cheafi \ud83d\udc3c" })
+      .setFooter({ text: "CC \ud83d\udc3c" })
       .setTimestamp();
     await reply.edit({ embeds: [fail] });
   }
@@ -865,7 +865,7 @@ async function cmdResults(msg) {
           inline: true,
         },
       )
-      .setFooter({ text: "Cheafi \ud83d\udc3c" })
+      .setFooter({ text: "CC \ud83d\udc3c" })
       .setTimestamp(r.timestamp ? new Date(r.timestamp) : new Date());
   });
   await msg.reply({ embeds });
@@ -896,7 +896,7 @@ async function cmdHealth(msg) {
         `${errs.length ? "\ud83d\udfe0" : "\ud83d\udfe2"} **Agents** \u2014 ${h?.agents || 0} active, ${errs.length} errors`,
       ].join("\n"),
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await msg.reply({ embeds: [e] });
 }
@@ -939,7 +939,7 @@ async function sendDigest() {
 
   const e = new EmbedBuilder()
     .setColor(pos ? 0x00ff88 : 0xff4444)
-    .setTitle("\ud83d\udccb Digest \u2014 Cheafi")
+    .setTitle("\ud83d\udccb Digest \u2014 CC")
     .setDescription(
       [
         "```diff",
@@ -996,7 +996,7 @@ export async function sendBacktestResult(r) {
       },
       { name: "Range", value: `\`${r.timerange || "\u2014"}\``, inline: true },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await tradingChannel.send({ embeds: [e] });
 }
@@ -1018,7 +1018,7 @@ export async function sendMLStateUpdate(u) {
       },
       { name: "Trend", value: `\`${u.trend || "stable"}\``, inline: true },
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c" })
+    .setFooter({ text: "CC \ud83d\udc3c" })
     .setTimestamp();
   await tradingChannel.send({ embeds: [e] });
 }
@@ -1043,7 +1043,7 @@ export async function sendAlert(level, message) {
         .setColor(col[level] || 0x5865f2)
         .setTitle(`${ico[level] || "\u2139\ufe0f"} ${level.toUpperCase()}`)
         .setDescription(message)
-        .setFooter({ text: "Cheafi \ud83d\udc3c" })
+        .setFooter({ text: "CC \ud83d\udc3c" })
         .setTimestamp(),
     ],
   });
@@ -1121,7 +1121,7 @@ export async function sendFinding(finding) {
       { name: "Open", value: `\`${d.openTrades || 0}\``, inline: true },
     );
   }
-  e.setFooter({ text: "Cheafi \ud83d\udc3c" }).setTimestamp();
+  e.setFooter({ text: "CC \ud83d\udc3c" }).setTimestamp();
   await tradingChannel.send({ embeds: [e] });
 }
 
@@ -1143,7 +1143,7 @@ export async function sendRiskAlert(riskData) {
         "\u26a0\ufe0f Immediate attention needed.",
       ].join("\n"),
     )
-    .setFooter({ text: "Cheafi \ud83d\udc3c \u2022 Risk Manager" })
+    .setFooter({ text: "CC \ud83d\udc3c \u2022 Risk Manager" })
     .setTimestamp();
   await tradingChannel.send({ embeds: [e] });
 }

@@ -36,7 +36,7 @@ fi
 
 STRATEGIES=("A52Strategy" "OPTStrategy" "A51Strategy" "A31Strategy" "AdaptiveMLStrategy")
 
-echo "🧠 Cheafi ML Training Pipeline"
+echo "🧠 CC ML Training Pipeline"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📅 Time range: $TIMERANGE"
 echo "📊 Strategies: ${STRATEGIES[*]}"

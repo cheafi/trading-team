@@ -24,7 +24,7 @@ export function TeamHeader() {
         <div className="text-4xl">🐼</div>
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
-            Cheafi
+            CC
           </h1>
           <p className="text-sm text-slate-400">
             ETH/USDT:USDT • 5m R2 Short Specialist • Paper Trading

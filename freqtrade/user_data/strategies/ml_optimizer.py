@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ML Optimizer - Cheafi Trading Team (v3 PRO)
+ML Optimizer - CC Trading Team (v3 PRO)
 =============================================
 Professional quant-grade self-learning pipeline:
 
@@ -1723,12 +1723,12 @@ def save_training_log(strat_scores, best_params, total_trades, regime_scores):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Cheafi ML Optimizer v2")
+    parser = argparse.ArgumentParser(description="CC ML Optimizer v2")
     parser.add_argument("--retrain", action="store_true")
     args = parser.parse_args()
 
     print("=" * 70)
-    print("Cheafi ML Optimizer v2 - Self-Learning Pipeline")
+    print("CC ML Optimizer v2 - Self-Learning Pipeline")
     print("=" * 70)
     print("Backtest dir: " + str(BACKTEST_DIR))
     print("Model dir: " + str(MODEL_DIR))
