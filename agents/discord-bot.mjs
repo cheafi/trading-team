@@ -1,6 +1,6 @@
 /**
  * Discord Bot — CC Trading Team
- * Clean, aligned embeds with consistent structure.
+ * Polished UX with consistent branding, visual hierarchy, and clean embeds.
  */
 import { Client, GatewayIntentBits, EmbedBuilder } from "discord.js";
 import pino from "pino";
@@ -21,6 +21,28 @@ let tradingChannel = null;
 let digestInterval = null;
 
 const API_KEY = process.env.ML_TRAIN_API_KEY || "";
+
+// ─── Color Palette ───────────────────────────────────────────────────
+const C = {
+  profit: 0x00d68f,   // green  — profit, success, healthy
+  loss: 0xff4757,     // red    — losses, errors, critical
+  info: 0x5865f2,     // blurple — info, help, config
+  ml: 0xa855f7,       // purple — ML engine
+  warn: 0xffa502,     // orange — warnings, pending
+  gold: 0xf1c40f,     // gold   — rankings, highlights
+  neutral: 0x95a5a6,  // grey   — inactive, empty
+  agents: 0x3498db,   // blue   — agents, findings
+};
+
+// ─── Brand ───────────────────────────────────────────────────────────
+const BRAND = "CC \ud83d\udc3c";
+const IDENTITY = "USDT Futures \u00b7 R2 Short \u00b7 5m";
+
+function brand(embed, tip) {
+  return embed
+    .setFooter({ text: tip ? `${tip}  \u2022  ${BRAND}` : BRAND })
+    .setTimestamp();
+}
 
 // === Helpers ===
 async function api(path) {
@@ -93,6 +115,12 @@ function getPF(p) {
     ? Number(p.profit_factor).toFixed(2)
     : "\u2014";
 }
+function pnlColor(v) {
+  return v >= 0 ? C.profit : C.loss;
+}
+function stripPair(p) {
+  return (p || "\u2014").replace("/USDT:USDT", "").replace("/USDT", "");
+}
 
 // === Events ===
 async function onReady() {
@@ -125,26 +153,32 @@ async function onMessage(message) {
     "!help": cmdHelp,
     "!dashboard": cmdDashboard,
     "!dash": cmdDashboard,
+    "!d": cmdDashboard,
     "!pnl": cmdPnL,
     "!profit": cmdPnL,
     "!risk": cmdRisk,
     "!ml": cmdML,
     "!agents": cmdAgents,
+    "!team": cmdAgents,
     "!status": cmdAgents,
     "!strategies": cmdStrategies,
     "!strats": cmdStrategies,
     "!findings": cmdFindings,
     "!trades": cmdTrades,
+    "!positions": cmdTrades,
     "!pairs": cmdPairs,
     "!pair": cmdPairs,
     "!summary": cmdSummary,
     "!sum": cmdSummary,
+    "!s": cmdSummary,
     "!config": cmdConfig,
     "!cfg": cmdConfig,
     "!backtest": cmdBacktest,
+    "!bt": cmdBacktest,
     "!train": cmdTrain,
     "!results": cmdResults,
     "!health": cmdHealth,
+    "!ping": cmdHealth,
     "!digest": cmdDigest,
   };
   try {
@@ -202,39 +236,42 @@ export async function initDiscord() {
 // === Online ===
 async function sendOnlineEmbed() {
   if (!tradingChannel) return;
-  const h = await api("/health");
+  const [h, wl] = await Promise.all([
+    api("/health"),
+    api("/api/ft/whitelist"),
+  ]);
+  const pairs = (wl?.whitelist || []).map((p) => stripPair(p));
   const embed = new EmbedBuilder()
-    .setColor(0x00ff88)
-    .setTitle("\ud83d\ude80 CC \u2014 Online")
+    .setColor(C.profit)
+    .setTitle("\ud83d\ude80  CC \u2014 Online")
     .setDescription(
       [
         "```yml",
-        `Status : Operational`,
-        `Agents : ${h?.agents || 0} active`,
-        `Web    : http://localhost:3000`,
-        `API    : http://localhost:3001`,
+        `Mode     : ${IDENTITY}`,
+        `Agents   : ${h?.agents || 0} active`,
+        `Pairs    : ${pairs.join(", ") || "loading..."}`,
+        `Dashboard: http://localhost:3000`,
         "```",
       ].join("\n"),
     )
     .addFields(
       {
-        name: "\ud83d\udcca Monitor",
-        value: "`!dash` `!pnl` `!summary`",
+        name: "\ud83d\udcca  Monitor",
+        value: "`!d` `!pnl` `!s` `!risk`",
         inline: true,
       },
       {
-        name: "\ud83e\udde0 Intel",
-        value: "`!ml` `!agents` `!strats`",
+        name: "\ud83e\udde0  Intel",
+        value: "`!ml` `!team` `!strats`",
         inline: true,
       },
       {
-        name: "\u26a1 Actions",
-        value: "`!backtest` `!train` `!help`",
+        name: "\u26a1  Actions",
+        value: "`!bt` `!train` `!help`",
         inline: true,
       },
-    )
-    .setFooter({ text: "CC \ud83d\udc3c \u2022 Digest every 4h" })
-    .setTimestamp();
+    );
+  brand(embed, "Digest every 4h  \u00b7  !help for commands");
   await tradingChannel.send({ embeds: [embed] }).catch(() => {});
 }
 
@@ -242,46 +279,46 @@ async function sendOnlineEmbed() {
 
 async function cmdHelp(msg) {
   const e = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle("\ud83d\udcd6 Commands")
+    .setColor(C.info)
+    .setTitle("\ud83d\udcd6  CC Command Center")
+    .setDescription(`> ${IDENTITY}\n\nAll commands start with \`!\`. Shortcuts in parentheses.`)
     .addFields(
       {
-        name: "\ud83d\udcca Overview",
+        name: "\u2501\u2501  \ud83d\udcca Trading  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501",
         value: [
-          "`!dashboard ` Full overview",
-          "`!pnl       ` P&L summary",
-          "`!summary   ` Quick stats",
-          "`!risk      ` Risk gauge",
-          "`!pairs     ` Pair breakdown",
-          "`!trades    ` Open positions",
-          "`!config    ` Trading config",
+          "`!dashboard` (`!d`) \u2014 Full 4-panel overview",
+          "`!pnl`              \u2014 Profit & loss breakdown",
+          "`!summary`  (`!s`) \u2014 Quick stats snapshot",
+          "`!risk`             \u2014 Risk gauge + drawdown bar",
+          "`!trades`           \u2014 Open positions table",
+          "`!pairs`            \u2014 Per-pair performance",
         ].join("\n"),
         inline: false,
       },
       {
-        name: "\ud83e\udde0 Intel",
+        name: "\u2501\u2501  \ud83e\udde0 Intelligence  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501",
         value: [
-          "`!ml        ` ML engine",
-          "`!agents    ` Team status",
-          "`!strategies` Rankings",
-          "`!findings  ` Recent reports",
+          "`!ml`               \u2014 ML engine & regime params",
+          "`!agents`  (`!team`) \u2014 Agent team status",
+          "`!strategies`       \u2014 Strategy ranking table",
+          "`!findings`         \u2014 Recent agent reports",
+          "`!config`           \u2014 Active trading config",
         ].join("\n"),
         inline: false,
       },
       {
-        name: "\u26a1 Actions",
+        name: "\u2501\u2501  \u26a1 Actions  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501",
         value: [
-          "`!backtest [strat] [range]`",
-          "`!train    ` ML training",
-          "`!results  ` BT results",
-          "`!health   ` System check",
-          "`!digest   ` Force digest",
+          "`!backtest [strat] [range]` (`!bt`) \u2014 Run backtest",
+          "`!train`            \u2014 Submit ML training job",
+          "`!results`          \u2014 View backtest results",
+          "`!health`  (`!ping`) \u2014 System health check",
+          "`!digest`           \u2014 Force 4h digest now",
         ].join("\n"),
         inline: false,
       },
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e, "Tip: !d for a quick full overview");
   await msg.reply({ embeds: [e] });
 }
 
@@ -320,9 +357,9 @@ function buildPnL(profit, trades) {
     l = profit?.losing_trades ?? 0;
   const pos = total >= 0;
 
-  return new EmbedBuilder()
-    .setColor(pos ? 0x00ff88 : 0xff4444)
-    .setTitle("\ud83d\udcb0 P&L Overview")
+  const e = new EmbedBuilder()
+    .setColor(pnlColor(total))
+    .setTitle("\ud83d\udcb0  P&L Overview")
     .setDescription(
       [
         "```diff",
@@ -331,22 +368,21 @@ function buildPnL(profit, trades) {
       ].join("\n"),
     )
     .addFields(
-      { name: "Closed", value: `\`${coin(closed)} USDT\``, inline: true },
-      { name: "Win Rate", value: `\`${getWR(profit)}%\``, inline: true },
-      { name: "Profit Factor", value: `\`${getPF(profit)}\``, inline: true },
+      { name: "\ud83d\udce6 Closed P&L", value: `\`${coin(closed)} USDT\``, inline: true },
+      { name: "\ud83c\udfaf Win Rate", value: `\`${getWR(profit)}%\``, inline: true },
+      { name: "\u2696\ufe0f Profit Factor", value: `\`${getPF(profit)}\``, inline: true },
       {
-        name: "Win / Loss",
-        value: `\u2705 ${w}  \u274c ${l}  \u00b7 ${w + l} trades`,
+        name: "\ud83d\udcc8 Wins / Losses",
+        value: `\u2705 ${w}  \u00b7  \u274c ${l}  \u00b7  ${w + l} total`,
         inline: true,
       },
       {
-        name: "Positions",
-        value: `\ud83d\udcc2 ${open} open \u00b7 \ud83d\udcc1 ${closedN} closed`,
+        name: "\ud83d\udcc2 Positions",
+        value: `${open} open  \u00b7  ${closedN} closed`,
         inline: true,
       },
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  return brand(e, "!risk for drawdown details");
 }
 
 async function cmdRisk(msg) {
@@ -358,19 +394,14 @@ function buildRisk(profit) {
   const ddAbs = profit?.max_drawdown_abs ?? 0;
   const lv =
     dd > 20 ? "CRITICAL" : dd > 15 ? "HIGH" : dd > 10 ? "MEDIUM" : "LOW";
-  const col = {
-    CRITICAL: 0xff4444,
-    HIGH: 0xffa500,
-    MEDIUM: 0xffcc00,
-    LOW: 0x00ff88,
-  }[lv];
+  const col = { CRITICAL: C.loss, HIGH: C.warn, MEDIUM: C.gold, LOW: C.profit }[lv];
   const bLen = 20,
     f = Math.round(Math.min(dd / 25, 1) * bLen);
   const bar = "\u2588".repeat(f) + "\u2591".repeat(bLen - f);
 
-  return new EmbedBuilder()
+  const e = new EmbedBuilder()
     .setColor(col)
-    .setTitle(`\ud83d\udee1\ufe0f Risk \u2014 ${riskEmoji(lv)} ${lv}`)
+    .setTitle(`\ud83d\udee1\ufe0f  Risk \u2014 ${riskEmoji(lv)} ${lv}`)
     .addFields(
       {
         name: "Max Drawdown",
@@ -392,9 +423,8 @@ function buildRisk(profit) {
         value: `\`${profit?.expectancy != null ? coin(profit.expectancy, 4) : "\u2014"}\``,
         inline: true,
       },
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  return brand(e, lv === "CRITICAL" ? "\u26a0\ufe0f DD above 20% \u2014 review positions" : "Halt threshold: 20% DD");
 }
 
 async function cmdML(msg) {
@@ -423,8 +453,9 @@ function buildML(ml, history) {
     }[ml?.improvementTrend] || "\u2192 Stable";
 
   const e = new EmbedBuilder()
-    .setColor(0x9b59b6)
-    .setTitle("\ud83e\udde0 ML Engine")
+    .setColor(C.ml)
+    .setTitle("\ud83e\udde0  ML Engine")
+    .setDescription("> Only **R2 (Ranging, short-only)** is active in production.")
     .addFields(
       { name: "Regime", value: `**${rLabel}**`, inline: true },
       {
@@ -444,7 +475,7 @@ function buildML(ml, history) {
         inline: true,
       },
       {
-        name: "Trained",
+        name: "\ud83d\udd50 Last Refresh",
         value: ml?.lastTrained ? timeAgo(ml.lastTrained) : "Never",
         inline: true,
       },
@@ -485,7 +516,7 @@ function buildML(ml, history) {
     });
   }
 
-  return e.setFooter({ text: "CC \ud83d\udc3c" }).setTimestamp();
+  return brand(e, "!train to submit ML training job");
 }
 
 async function cmdAgents(msg) {
@@ -494,26 +525,32 @@ async function cmdAgents(msg) {
 
 function buildAgents(agents) {
   if (!agents?.length)
-    return new EmbedBuilder()
-      .setColor(0xff4444)
-      .setTitle("\ud83e\udd16 Agents")
-      .setDescription("\u274c Unavailable")
-      .setTimestamp();
-  const ic = {
-    idle: "\ud83d\udfe2",
-    running: "\ud83d\udd35",
-    error: "\ud83d\udd34",
-  };
-  const lines = agents.map(
-    (a) =>
-      `${a.emoji} **${a.name}**\n${ic[a.status] || "\u26aa"} ${a.status} \u00b7 ${a.findingsCount || 0} findings \u00b7 ${a.lastRun ? timeAgo(a.lastRun) : "never"}`,
-  );
-  return new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle(`\ud83e\udd16 Agents (${agents.length})`)
-    .setDescription(lines.join("\n\n"))
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    return brand(
+      new EmbedBuilder()
+        .setColor(C.neutral)
+        .setTitle("\ud83e\udd16  Agent Team")
+        .setDescription("```\n\u26a0\ufe0f  No agents reporting\n   Check coordinator health\n```"),
+    );
+  const ic = { idle: "\ud83d\udfe2", running: "\ud83d\udd35", error: "\ud83d\udd34" };
+  const errs = agents.filter((a) => a.status === "error").length;
+  const running = agents.filter((a) => a.status === "running").length;
+  const lines = agents.map((a) => {
+    const status = ic[a.status] || "\u26aa";
+    const findings = a.findingsCount ? `${a.findingsCount} findings` : "\u2014";
+    const last = a.lastRun ? timeAgo(a.lastRun) : "never";
+    return `${a.emoji} **${a.name}**\n${status} ${a.status} \u00b7 ${findings} \u00b7 ${last}`;
+  });
+  const e = new EmbedBuilder()
+    .setColor(errs > 0 ? C.warn : C.agents)
+    .setTitle(`\ud83e\udd16  Agent Team (${agents.length})`)
+    .setDescription(
+      [
+        `> \ud83d\udfe2 ${agents.length - errs - running} idle \u00b7 \ud83d\udd35 ${running} running \u00b7 \ud83d\udd34 ${errs} errors`,
+        "",
+        ...lines,
+      ].join("\n"),
+    );
+  return brand(e, "!findings for recent agent reports");
 }
 
 async function cmdStrategies(msg) {
@@ -531,13 +568,14 @@ async function cmdStrategies(msg) {
   const hdr = " #  Strategy         c      e     WR%    DD%";
   const sep =
     "\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500";
+  const medal = ["\ud83e\udd47", "\ud83e\udd48", "\ud83e\udd49", " 4", " 5"];
   const rows = strats.map((s, i) => {
     const n = s.k.padEnd(15);
     const eStr = (s.e >= 0 ? "+" : "") + num(s.e);
-    return ` ${i + 1}  ${n} ${pad(num(s.c), 5)} ${pad(eStr, 6)} ${pad(wr, 6)} ${pad(dd, 6)}`;
+    return `${medal[i]}  ${n} ${pad(num(s.c), 5)} ${pad(eStr, 6)} ${pad(wr, 6)} ${pad(dd, 6)}`;
   });
   const e = new EmbedBuilder()
-    .setColor(0x2ecc71)
+    .setColor(C.gold)
     .setTitle("\ud83d\udcca Strategy Ranking")
     .setDescription(`\`\`\`\n${hdr}\n${sep}\n${rows.join("\n")}\n\`\`\``)
     .addFields(
@@ -545,14 +583,23 @@ async function cmdStrategies(msg) {
       { name: "Profit Factor", value: `\`${getPF(p)}\``, inline: true },
       { name: "Sharpe", value: `\`${num(p?.sharpe)}\``, inline: true },
     )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+  brand(e, "Only A52 (R2 short) is active in production");
   await msg.reply({ embeds: [e] });
 }
 
 async function cmdFindings(msg) {
   const f = await api("/api/findings?limit=10");
-  if (!f?.length) return msg.reply("\ud83d\udced No findings yet.");
+  if (!f?.length)
+    return msg.reply({
+      embeds: [
+        brand(
+          new EmbedBuilder()
+            .setColor(C.neutral)
+            .setTitle("\ud83d\udccb  Findings")
+            .setDescription("```\n\ud83d\udced No findings yet\n   Agents will report when they run\n```"),
+        ),
+      ],
+    });
   const em = {
     "quant-researcher": "\ud83d\udd2c",
     backtester: "\ud83d\udcca",
@@ -563,22 +610,22 @@ async function cmdFindings(msg) {
     "ml-optimizer": "\ud83e\udde0",
   };
   const lines = f.slice(0, 8).map((x) => {
-    const t = new Date(x.timestamp).toLocaleTimeString("zh-TW", {
+    const t = new Date(x.timestamp).toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
     });
     return `${em[x.agent] || "\ud83e\udd16"} \`${t}\` **${x.agent}**\n> ${x.summary || "\u2014"}`;
   });
   await msg.reply({
     embeds: [
-      new EmbedBuilder()
-        .setColor(0x3498db)
-        .setTitle("\ud83d\udccb Latest Findings")
-        .setDescription(lines.join("\n\n"))
-        .setFooter({
-          text: `${Math.min(f.length, 8)} shown \u2022 CC \ud83d\udc3c`,
-        })
-        .setTimestamp(),
+      brand(
+        new EmbedBuilder()
+          .setColor(C.agents)
+          .setTitle("\ud83d\udccb  Latest Findings")
+          .setDescription(lines.join("\n\n")),
+        `${Math.min(f.length, 8)} of ${f.length} shown`,
+      ),
     ],
   });
 }
@@ -588,14 +635,15 @@ async function cmdTrades(msg) {
   if (!trades?.length) {
     return msg.reply({
       embeds: [
-        new EmbedBuilder()
-          .setColor(0x95a5a6)
-          .setTitle("\ud83d\udccb Open Trades")
-          .setDescription(
-            "```\n\ud83d\ude34 No open positions\n   Waiting for R2 setup...\n```",
-          )
-          .setFooter({ text: "CC \ud83d\udc3c" })
-          .setTimestamp(),
+        brand(
+          new EmbedBuilder()
+            .setColor(C.neutral)
+            .setTitle("\ud83d\udccb  Open Trades")
+            .setDescription(
+              "```\n\ud83d\ude34 No open positions\n   Waiting for R2 short setup...\n```",
+            ),
+          "Bot will open when regime = RANGING",
+        ),
       ],
     });
   }
@@ -606,8 +654,8 @@ async function cmdTrades(msg) {
     return `${d}  ${p}  ${pad(coin(t.profit_pct || 0) + "%", 8)}  ${t.trade_duration || "\u2014"}`;
   });
   const e = new EmbedBuilder()
-    .setColor(0xe67e22)
-    .setTitle(`\ud83d\udccb Open Trades (${trades.length})`)
+    .setColor(pnlColor(total))
+    .setTitle(`\ud83d\udccb  Open Trades (${trades.length})`)
     .setDescription(
       [
         "```",
@@ -618,15 +666,24 @@ async function cmdTrades(msg) {
         `Total P&L: ${coin(total)} USDT`,
         "```",
       ].join("\n"),
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e);
   await msg.reply({ embeds: [e] });
 }
 
 async function cmdPairs(msg) {
   const perf = await api("/api/ft/performance");
-  if (!perf?.length) return msg.reply("\ud83d\udced No pair data yet.");
+  if (!perf?.length)
+    return msg.reply({
+      embeds: [
+        brand(
+          new EmbedBuilder()
+            .setColor(C.neutral)
+            .setTitle("\ud83c\udfc6  Pair Performance")
+            .setDescription("```\n\ud83d\udced No pair data yet\n   Trades needed for stats\n```"),
+        ),
+      ],
+    });
   const sorted = [...perf].sort((a, b) => (b.profit || 0) - (a.profit || 0));
   const rows = sorted.map((p) => {
     const ic =
@@ -644,8 +701,8 @@ async function cmdPairs(msg) {
   const tp = sorted.reduce((s, p) => s + (p.profit || 0), 0);
   const tt = sorted.reduce((s, p) => s + (p.count || 0), 0);
   const e = new EmbedBuilder()
-    .setColor(tp >= 0 ? 0x00ff88 : 0xff4444)
-    .setTitle(`\ud83c\udfc6 Pair Performance (${sorted.length})`)
+    .setColor(pnlColor(tp))
+    .setTitle(`\ud83c\udfc6  Pair Performance (${sorted.length})`)
     .setDescription(
       [
         "```",
@@ -656,9 +713,8 @@ async function cmdPairs(msg) {
         `   TOTAL       ${pad(tt, 4)}   ${pad(coin(tp), 7)}%`,
         "```",
       ].join("\n"),
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e);
   await msg.reply({ embeds: [e] });
 }
 
@@ -678,15 +734,12 @@ async function cmdSummary(msg) {
   const sorted = [...(perf || [])].sort(
     (a, b) => (b.profit || 0) - (a.profit || 0),
   );
-  const best =
-    sorted[0]?.pair?.replace("/USDT:USDT", "").replace("/USDT", "") || "\u2014";
-  const worst =
-    sorted.at(-1)?.pair?.replace("/USDT:USDT", "").replace("/USDT", "") ||
-    "\u2014";
+  const best = stripPair(sorted[0]?.pair) || "\u2014";
+  const worst = stripPair(sorted.at(-1)?.pair) || "\u2014";
   const pos = total >= 0;
   const e = new EmbedBuilder()
-    .setColor(pos ? 0x00ff88 : 0xff4444)
-    .setTitle("\u26a1 Quick Summary")
+    .setColor(pnlColor(total))
+    .setTitle("\u26a1  Quick Summary")
     .setDescription(
       [
         "```diff",
@@ -696,9 +749,8 @@ async function cmdSummary(msg) {
         `\ud83d\udcca **${p?.trade_count ?? 0}** trades \u00b7 \ud83c\udfaf **${wr}%** WR \u00b7 \u2696\ufe0f **${pf}** PF \u00b7 \ud83d\udcc9 **${dd.toFixed(1)}%** DD`,
         `\ud83d\udcc2 **${open}** open \u00b7 \ud83e\udde0 **${ml?.regime || "\u2014"}** \u00b7 \ud83c\udfc6 **${best}** \u00b7 \ud83d\udc80 **${worst}**`,
       ].join("\n"),
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e, "!d for full dashboard");
   await msg.reply({ embeds: [e] });
 }
 
@@ -711,11 +763,12 @@ async function cmdConfig(msg) {
     .map((p) => p.replace("/USDT:USDT", ""))
     .join(", ");
   const e = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle("\u2699\ufe0f Config")
+    .setColor(C.info)
+    .setTitle("\u2699\ufe0f  Config")
+    .setDescription(`> ${IDENTITY}`)
     .addFields(
       {
-        name: "Pairs",
+        name: "\ud83d\udcb1 Pairs",
         value: `\`${pairs || "none"}\` (${wl?.whitelist?.length || 0})`,
         inline: false,
       },
@@ -725,13 +778,12 @@ async function cmdConfig(msg) {
         inline: true,
       },
       { name: "Regime", value: `\`${ml?.regime || "\u2014"}\``, inline: true },
-      { name: "Timeframe", value: "`5m`", inline: true },
+      { name: "\u23f1\ufe0f Timeframe", value: "`5m + 15m + 1h`", inline: true },
       { name: "Max Trades", value: "`4`", inline: true },
       { name: "Mode", value: "`Futures / Isolated`", inline: true },
       { name: "Direction", value: "`R2 Short Only`", inline: true },
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e);
   await msg.reply({ embeds: [e] });
 }
 
@@ -739,9 +791,10 @@ async function cmdBacktest(msg) {
   const parts = msg.content.trim().split(/\s+/);
   const strat = parts[1] || "all",
     range = parts[2] || "";
-  const pending = new EmbedBuilder()
-    .setColor(0xffa500)
-    .setTitle("\u23f3 Backtest Requested")
+  const pending = brand(
+    new EmbedBuilder()
+      .setColor(C.warn)
+      .setTitle("\u23f3  Backtest Requested")
     .setDescription(
       [
         "```yml",
@@ -750,9 +803,8 @@ async function cmdBacktest(msg) {
         `Status   : Submitting...`,
         "```",
       ].join("\n"),
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    ),
+  );
   const reply = await msg.reply({ embeds: [pending] });
   try {
     const res = await apiPost("/api/backtest/run", {
@@ -760,9 +812,10 @@ async function cmdBacktest(msg) {
       timerange: range,
     });
     if (res && !res.error) {
-      const ok = new EmbedBuilder()
-        .setColor(0x00ff88)
-        .setTitle("\u2705 Backtest Running")
+      const ok = brand(
+        new EmbedBuilder()
+          .setColor(C.profit)
+          .setTitle("\u2705  Backtest Running")
         .setDescription(
           [
             "```yml",
@@ -770,84 +823,117 @@ async function cmdBacktest(msg) {
             `Range    : ${range || "default (6 months)"}`,
             `Status   : Running...`,
             "```",
-            "Use `!results` when complete.",
+            "> Use `!results` when complete.",
           ].join("\n"),
-        )
-        .setFooter({ text: "CC \ud83d\udc3c" })
-        .setTimestamp();
+        ),
+      );
       await reply.edit({ embeds: [ok] });
     } else {
-      const fail = new EmbedBuilder()
-        .setColor(0xff4444)
-        .setTitle("\u274c Backtest Failed to Start")
-        .setDescription(`\`\`\`\n${res?.error || "Unknown error"}\n\`\`\``)
-        .setFooter({ text: "CC \ud83d\udc3c" })
-        .setTimestamp();
-      await reply.edit({ embeds: [fail] });
+      await reply.edit({
+        embeds: [
+          brand(
+            new EmbedBuilder()
+              .setColor(C.loss)
+              .setTitle("\u274c  Backtest Failed to Start")
+              .setDescription(`\`\`\`\n${res?.error || "Unknown error"}\n\`\`\``),
+          ),
+        ],
+      });
     }
   } catch (e) {
-    const fail = new EmbedBuilder()
-      .setColor(0xff4444)
-      .setTitle("\u274c Backtest Failed")
-      .setDescription(
-        `\`\`\`\n${e.message || "Agent runner unavailable"}\n\`\`\``,
-      )
-      .setFooter({ text: "CC \ud83d\udc3c" })
-      .setTimestamp();
-    await reply.edit({ embeds: [fail] });
+    await reply.edit({
+      embeds: [
+        brand(
+          new EmbedBuilder()
+            .setColor(C.loss)
+            .setTitle("\u274c  Backtest Failed")
+            .setDescription(
+              `\`\`\`\n${e.message || "Agent runner unavailable"}\n\`\`\``,
+            ),
+        ),
+      ],
+    });
   }
 }
 
 async function cmdTrain(msg) {
-  const pending = new EmbedBuilder()
-    .setColor(0x9b59b6)
-    .setTitle("\ud83e\udde0 ML Training Requested")
-    .setDescription("```\nSubmitting training job...\n```")
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+  const pending = brand(
+    new EmbedBuilder()
+      .setColor(C.ml)
+      .setTitle("\ud83e\udde0  ML Training Requested")
+      .setDescription("```\nSubmitting training job...\n```"),
+  );
   const reply = await msg.reply({ embeds: [pending] });
   try {
     const res = await apiPost("/api/ml/train");
     if (res && res.jobId) {
-      const ok = new EmbedBuilder()
-        .setColor(0x00ff88)
-        .setTitle("\u2705 ML Training Started")
-        .setDescription(
-          `\`\`\`\nJob: ${res.jobId}\nStatus: Running...\nResults posted when done.\n\`\`\``,
-        )
-        .setFooter({ text: "CC \ud83d\udc3c" })
-        .setTimestamp();
-      await reply.edit({ embeds: [ok] });
+      await reply.edit({
+        embeds: [
+          brand(
+            new EmbedBuilder()
+              .setColor(C.profit)
+              .setTitle("\u2705  ML Training Started")
+              .setDescription(
+                [
+                  "```yml",
+                  `Job    : ${res.jobId}`,
+                  `Status : Running \u23f3`,
+                  `Output : Results posted when done`,
+                  "```",
+                  "",
+                  "> Retrains from existing backtest results.",
+                  "> Does **not** download new data or run new backtests.",
+                ].join("\n"),
+              ),
+          ),
+        ],
+      });
     } else {
-      const fail = new EmbedBuilder()
-        .setColor(0xff4444)
-        .setTitle("\u274c Training Failed to Start")
-        .setDescription(`\`\`\`\n${res?.error || "Unknown error"}\n\`\`\``)
-        .setFooter({ text: "CC \ud83d\udc3c" })
-        .setTimestamp();
-      await reply.edit({ embeds: [fail] });
+      await reply.edit({
+        embeds: [
+          brand(
+            new EmbedBuilder()
+              .setColor(C.loss)
+              .setTitle("\u274c  Training Failed to Start")
+              .setDescription(`\`\`\`\n${res?.error || "Unknown error"}\n\`\`\``),
+          ),
+        ],
+      });
     }
   } catch (e) {
-    const fail = new EmbedBuilder()
-      .setColor(0xff4444)
-      .setTitle("\u274c Training Failed")
-      .setDescription(
-        `\`\`\`\n${e.message || "Agent runner unavailable"}\n\`\`\``,
-      )
-      .setFooter({ text: "CC \ud83d\udc3c" })
-      .setTimestamp();
-    await reply.edit({ embeds: [fail] });
+    await reply.edit({
+      embeds: [
+        brand(
+          new EmbedBuilder()
+            .setColor(C.loss)
+            .setTitle("\u274c  Training Failed")
+            .setDescription(
+              `\`\`\`\n${e.message || "Agent runner unavailable"}\n\`\`\``,
+            ),
+        ),
+      ],
+    });
   }
 }
 
 async function cmdResults(msg) {
   const res = await api("/api/backtest/results");
   if (!res?.length)
-    return msg.reply("\ud83d\udced No results. Run `!backtest` first.");
+    return msg.reply({
+      embeds: [
+        brand(
+          new EmbedBuilder()
+            .setColor(C.neutral)
+            .setTitle("\ud83d\udcca  Backtest Results")
+            .setDescription("```\n\ud83d\udced No results yet\n   Run !bt to start a backtest\n```"),
+        ),
+      ],
+    });
   const embeds = res.slice(0, 5).map((r) => {
     const pos = (r.profit || 0) >= 0;
-    return new EmbedBuilder()
-      .setColor(pos ? 0x00ff88 : 0xff4444)
+    return brand(
+      new EmbedBuilder()
+        .setColor(pnlColor(r.profit || 0))
       .setTitle(`${pos ? "\ud83d\udcc8" : "\ud83d\udcc9"} ${r.strategy}`)
       .addFields(
         { name: "Profit", value: `\`${pct(r.profit, 2)}\``, inline: true },
@@ -864,9 +950,8 @@ async function cmdResults(msg) {
           value: `\`${r.timerange || "\u2014"}\``,
           inline: true,
         },
-      )
-      .setFooter({ text: "CC \ud83d\udc3c" })
-      .setTimestamp(r.timestamp ? new Date(r.timestamp) : new Date());
+      ),
+    );
   });
   await msg.reply({ embeds });
 }
@@ -884,9 +969,9 @@ async function cmdHealth(msg) {
     errs = (ag || []).filter((a) => a.status === "error");
   const all = ok1 && ok2 && ok3 && !errs.length;
   const e = new EmbedBuilder()
-    .setColor(all ? 0x00ff88 : 0xffa500)
+    .setColor(all ? C.profit : C.warn)
     .setTitle(
-      `\ud83d\udd27 Health \u2014 ${all ? "\u2705 All OK" : "\u26a0\ufe0f Issues"}`,
+      `\ud83d\udd27  Health \u2014 ${all ? "\u2705 All Systems OK" : "\u26a0\ufe0f Issues Detected"}`,
     )
     .setDescription(
       [
@@ -895,9 +980,8 @@ async function cmdHealth(msg) {
         `${ok3 ? "\ud83d\udfe2" : "\ud83d\udd34"} **Discord** \u2014 ${ok3 ? "Connected" : "Down"}`,
         `${errs.length ? "\ud83d\udfe0" : "\ud83d\udfe2"} **Agents** \u2014 ${h?.agents || 0} active, ${errs.length} errors`,
       ].join("\n"),
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e);
   await msg.reply({ embeds: [e] });
 }
 
@@ -938,8 +1022,8 @@ async function sendDigest() {
     .join("\n");
 
   const e = new EmbedBuilder()
-    .setColor(pos ? 0x00ff88 : 0xff4444)
-    .setTitle("\ud83d\udccb Digest \u2014 CC")
+    .setColor(pnlColor(total))
+    .setTitle("\ud83d\udccb  Periodic Digest")
     .setDescription(
       [
         "```diff",
@@ -980,9 +1064,9 @@ export async function sendBacktestResult(r) {
   if (!tradingChannel) return;
   const pos = (r.profit || 0) >= 0;
   const e = new EmbedBuilder()
-    .setColor(pos ? 0x00ff88 : 0xff4444)
+    .setColor(pnlColor(r.profit || 0))
     .setTitle(
-      `${pos ? "\ud83d\udcc8" : "\ud83d\udcc9"} Backtest: ${r.strategy}`,
+      `${pos ? "\ud83d\udcc8" : "\ud83d\udcc9"}  Backtest: ${r.strategy}`,
     )
     .addFields(
       { name: "Profit", value: `\`${pct(r.profit, 2)}\``, inline: true },
@@ -995,19 +1079,21 @@ export async function sendBacktestResult(r) {
         inline: true,
       },
       { name: "Range", value: `\`${r.timerange || "\u2014"}\``, inline: true },
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e);
   await tradingChannel.send({ embeds: [e] });
 }
 
 export async function sendMLStateUpdate(u) {
   if (!tradingChannel) return;
   const e = new EmbedBuilder()
-    .setColor(0x9b59b6)
-    .setTitle("\ud83e\udde0 ML State Refresh")
+    .setColor(C.ml)
+    .setTitle("\ud83e\udde0  ML State Refresh")
     .setDescription(
-      `\`\`\`\n${u.summary || "Done"}\n\`\`\`\nPeriodic state snapshot (no retraining occurred).`,
+      [
+        `\`\`\`\n${u.summary || "Done"}\n\`\`\``,
+        "> Periodic state snapshot (no retraining occurred).",
+      ].join("\n"),
     )
     .addFields(
       { name: "Regime", value: `\`${u.regime || "\u2014"}\``, inline: true },
@@ -1017,19 +1103,18 @@ export async function sendMLStateUpdate(u) {
         inline: true,
       },
       { name: "Trend", value: `\`${u.trend || "stable"}\``, inline: true },
-    )
-    .setFooter({ text: "CC \ud83d\udc3c" })
-    .setTimestamp();
+    );
+  brand(e);
   await tradingChannel.send({ embeds: [e] });
 }
 
 export async function sendAlert(level, message) {
   if (!tradingChannel) return;
   const col = {
-    info: 0x5865f2,
-    warning: 0xffa500,
-    critical: 0xff4444,
-    success: 0x00ff88,
+    info: C.info,
+    warning: C.warn,
+    critical: C.loss,
+    success: C.profit,
   };
   const ico = {
     info: "\u2139\ufe0f",
@@ -1039,12 +1124,12 @@ export async function sendAlert(level, message) {
   };
   await tradingChannel.send({
     embeds: [
-      new EmbedBuilder()
-        .setColor(col[level] || 0x5865f2)
-        .setTitle(`${ico[level] || "\u2139\ufe0f"} ${level.toUpperCase()}`)
-        .setDescription(message)
-        .setFooter({ text: "CC \ud83d\udc3c" })
-        .setTimestamp(),
+      brand(
+        new EmbedBuilder()
+          .setColor(col[level] || C.info)
+          .setTitle(`${ico[level] || "\u2139\ufe0f"}  ${level.toUpperCase()}`)
+          .setDescription(message),
+      ),
     ],
   });
 }
@@ -1061,15 +1146,15 @@ export async function sendFinding(finding) {
     "ml-optimizer": "\ud83e\udde0",
   };
   const cols = {
-    "risk-assessment": 0xffa500,
-    "security-audit": 0xff4444,
-    "signal-report": 0x2ecc71,
-    "ml-state-refresh": 0x9b59b6,
+    "risk-assessment": C.warn,
+    "security-audit": C.loss,
+    "signal-report": C.profit,
+    "ml-state-refresh": C.ml,
   };
   const d = finding.data || {};
   const e = new EmbedBuilder()
-    .setColor(cols[finding.type] || 0x3498db)
-    .setTitle(`${em[finding.agent] || "\ud83e\udd16"} ${finding.agent}`)
+    .setColor(cols[finding.type] || C.agents)
+    .setTitle(`${em[finding.agent] || "\ud83e\udd16"}  ${finding.agent}`)
     .setDescription(`> ${finding.summary || "Finding"}`);
 
   if (finding.type === "risk-assessment") {
@@ -1121,7 +1206,7 @@ export async function sendFinding(finding) {
       { name: "Open", value: `\`${d.openTrades || 0}\``, inline: true },
     );
   }
-  e.setFooter({ text: "CC \ud83d\udc3c" }).setTimestamp();
+  brand(e);
   await tradingChannel.send({ embeds: [e] });
 }
 
@@ -1130,21 +1215,20 @@ export async function sendRiskAlert(riskData) {
   const { riskLevel, drawdownPct, alerts } = riskData;
   if (riskLevel !== "HIGH" && riskLevel !== "CRITICAL") return;
   const e = new EmbedBuilder()
-    .setColor(riskLevel === "CRITICAL" ? 0xff4444 : 0xffa500)
+    .setColor(riskLevel === "CRITICAL" ? C.loss : C.warn)
     .setTitle(
-      `${riskLevel === "CRITICAL" ? "\ud83d\udea8" : "\u26a0\ufe0f"} RISK \u2014 ${riskLevel}`,
+      `${riskLevel === "CRITICAL" ? "\ud83d\udea8" : "\u26a0\ufe0f"}  RISK \u2014 ${riskLevel}`,
     )
     .setDescription(
       [
-        `**DD: ${pct(drawdownPct)}**`,
+        `**Drawdown: ${pct(drawdownPct)}**`,
         "",
         ...(alerts || []),
         "",
-        "\u26a0\ufe0f Immediate attention needed.",
+        "\u26a0\ufe0f Immediate attention required.",
       ].join("\n"),
-    )
-    .setFooter({ text: "CC \ud83d\udc3c \u2022 Risk Manager" })
-    .setTimestamp();
+    );
+  brand(e, "Risk Manager");
   await tradingChannel.send({ embeds: [e] });
 }
 

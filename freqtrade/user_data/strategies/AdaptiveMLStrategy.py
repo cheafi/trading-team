@@ -52,7 +52,6 @@ MODEL_DIR = Path("/freqtrade/user_data/ml_models")
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 # Active model artifacts:
-PERF_HISTORY_PATH = MODEL_DIR / "performance_history.json"
 BEST_PARAMS_PATH = MODEL_DIR / "best_params.json"
 QUALITY_MODEL_PATH = MODEL_DIR / "quality_model.pkl"
 DISCIPLINE_PATH = MODEL_DIR / "discipline_params.json"
@@ -114,7 +113,6 @@ class AdaptiveMLStrategy(IStrategy):
 
     # Internal state - ML models
     _best_params = None
-    _perf_history = None
     _quality_model_data = None  # PRO: quality model
     _discipline_params = None  # PRO: discipline params
     _anti_patterns = None  # PRO v4: learned anti-patterns
@@ -157,15 +155,6 @@ class AdaptiveMLStrategy(IStrategy):
                     self._best_params = json.load(f)
             except Exception:
                 self._best_params = None
-
-        # NOTE: _perf_history loaded for future use but not
-        # currently wired into live decision logic.
-        if PERF_HISTORY_PATH.exists():
-            try:
-                with open(PERF_HISTORY_PATH, "r") as f:
-                    self._perf_history = json.load(f)
-            except Exception:
-                self._perf_history = None
 
         # PRO: Load quality model
         if QUALITY_MODEL_PATH.exists():

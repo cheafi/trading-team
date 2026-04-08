@@ -349,7 +349,8 @@ def classify_trade_regimes(trades):
     sub_regimes = np.zeros(len(sorted_trades), dtype=int)
 
     for i, ts in enumerate(timestamps):
-        mask = np.abs(timestamps - ts) <= window_ms
+        # Causal window: only look BACKWARD from current trade (no future leakage)
+        mask = (timestamps >= ts - window_ms) & (timestamps <= ts)
         wp = all_profits[mask]
         ws = all_short[mask]
         wpr = all_price_range[mask]

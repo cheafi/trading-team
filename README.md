@@ -38,8 +38,8 @@
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/cheafi/trading-team.git
-cd trading-team
+git clone https://github.com/cheafi/Trading-bot-CC.git
+cd Trading-bot-CC
 cp .env.example .env    # fill in your keys (optional — dry_run works without)
 chmod +x scripts/*.sh
 

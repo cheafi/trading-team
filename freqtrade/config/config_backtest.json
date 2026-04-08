@@ -45,6 +45,15 @@
     "stoploss_on_exchange": true
   },
 
+  "api_server": {
+    "enabled": false,
+    "listen_ip_address": "127.0.0.1",
+    "listen_port": 8081,
+    "jwt_secret_key": "changeme-jwt-secret-key-trading-team",
+    "username": "freqtrader",
+    "password": "SuperSecure123"
+  },
+
   "timeframe": "5m",
   "startup_candle_count": 200
 }
