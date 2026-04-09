@@ -748,6 +748,7 @@ function startScheduler() {
 
 // ─── Auth helpers ──────────────────────────────────────────────
 const API_KEY = process.env.ML_TRAIN_API_KEY || "";
+const ALLOW_OPEN_AUTH = process.env.ALLOW_OPEN_AUTH === "true";
 const ALLOWED_ORIGINS = (
   process.env.CORS_ORIGINS || "http://localhost:3000,http://dashboard:3000"
 )
@@ -755,7 +756,11 @@ const ALLOWED_ORIGINS = (
   .map((s) => s.trim());
 
 function checkAuth(req) {
-  if (!API_KEY) return true; // no key configured = open (dev mode)
+  if (!API_KEY) {
+    if (ALLOW_OPEN_AUTH) return true;
+    log.warn("Mutating request blocked: ML_TRAIN_API_KEY not set and ALLOW_OPEN_AUTH !== 'true'");
+    return false;
+  }
   const provided = req.headers["x-api-key"];
   return provided === API_KEY;
 }
@@ -1151,7 +1156,7 @@ async function downloadData(pairs, timeframes, timerange) {
   const args = [
     "compose", "run", "--rm", "freqtrade",
     "download-data",
-    "--config", "/freqtrade/config/config.json",
+    "--config", "/freqtrade/config/config_backtest.json",
     "--pairs", ...safePairs,
     "--timeframes", ...safeTfs,
     "--timerange", safeTimerange,
@@ -1305,6 +1310,23 @@ async function main() {
   log.info("🚀 CC Trading Team Agent Coordinator starting...");
   log.info(`📡 Freqtrade API: ${FREQTRADE_API}`);
   log.info(`🗄️  Redis: ${REDIS_URL}`);
+
+  // ── Startup Validation ───────────────────────────────────
+  const warnings = [];
+  if (!API_KEY && !ALLOW_OPEN_AUTH) {
+    warnings.push("ML_TRAIN_API_KEY not set — mutating API endpoints are BLOCKED. Set ALLOW_OPEN_AUTH=true for dev mode.");
+  }
+  if (!API_KEY && ALLOW_OPEN_AUTH) {
+    warnings.push("ALLOW_OPEN_AUTH=true with no API key — mutating endpoints are OPEN (dev mode only!)");
+  }
+  if (FT_PASS === "SuperSecure123") {
+    warnings.push("Freqtrade API using default password — set FREQTRADE_PASS in .env for production");
+  }
+  if (!process.env.DISCORD_TOKEN) {
+    warnings.push("DISCORD_TOKEN not set — Discord bot will not connect");
+  }
+  for (const w of warnings) log.warn(`⚠️  ${w}`);
+  if (warnings.length) log.info(`${warnings.length} startup warning(s) — review .env config`);
 
   // Wait for Redis
   await redis.ping();
