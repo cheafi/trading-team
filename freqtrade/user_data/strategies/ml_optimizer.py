@@ -35,6 +35,22 @@ from pathlib import Path
 
 import numpy as np
 
+# ─── Module imports (Phase 2 architecture split) ───────────────
+# Scorer and Analyzer functions are extracted to separate modules.
+# The inline definitions below are kept as fallback during transition.
+# Once verified in production, remove them and uncomment the imports.
+#
+# from ml_scorer import (
+#     score_strategy, analyze_duration_profile, compute_fee_aware_edge,
+#     compute_rolling_performance, detect_performance_trend,
+#     compute_adaptive_score, compute_timeframe_context,
+#     compute_long_short_profile,
+# )
+# from ml_analyzer import (
+#     analyze_mfe_mae, compute_kelly_fraction, walk_forward_validate,
+#     monte_carlo_equity, analyze_equity_curve, analyze_losing_patterns,
+# )
+
 BACKTEST_DIR = Path(os.getenv("BACKTEST_DIR", "/freqtrade/user_data/backtest_results"))
 MODEL_DIR = Path(os.getenv("MODEL_DIR", "/freqtrade/user_data/ml_models"))
 MODEL_DIR.mkdir(parents=True, exist_ok=True)

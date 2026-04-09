@@ -1,17 +1,25 @@
 /**
- * Agent Coordinator — Orchestrates the 6-agent trading team
+ * Agent Coordinator — Orchestrates the 7-agent trading team
  *
- * Architecture inspired by gstack's multi-skill pattern:
- * - Each agent runs on a schedule or event trigger
- * - Results are published to Redis for dashboard consumption
- * - Agents can dispatch sub-tasks to each other
+ * Architecture: modular split (Phase 2)
+ *   ft-client.mjs    — Freqtrade API wrapper + self-test
+ *   job-manager.mjs  — ML training, backtest, download jobs
+ *   discord-bot.mjs  — Discord integration
+ *   coordinator.mjs  — Agent definitions, task runners, cron, HTTP routes
  */
 import { createServer } from "node:http";
-import { execSync, spawn } from "node:child_process";
 import Redis from "ioredis";
 import { CronJob } from "cron";
 import pino from "pino";
 import discord from "./discord-bot.mjs";
+import { ftApi, selfTestFT, FT_PASS, FREQTRADE_API } from "./ft-client.mjs";
+import {
+  startTrainingJob,
+  getDefaultTimerange,
+  downloadData,
+  runBacktests,
+  getBacktestResults,
+} from "./job-manager.mjs";
 
 const log = pino({
   level: process.env.LOG_LEVEL || "info",
@@ -23,9 +31,6 @@ const log = pino({
 
 // ─── Config ────────────────────────────────────────────────────
 const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
-const FREQTRADE_API = process.env.FREQTRADE_API || "http://freqtrade:8080";
-const FT_USER = process.env.FREQTRADE_API_USER || "freqtrader";
-const FT_PASS = process.env.FREQTRADE_API_PASSWORD || "SuperSecure123";
 const PORT = parseInt(process.env.AGENT_PORT || "3001", 10);
 const TZ = process.env.TZ || "Asia/Hong_Kong";
 
@@ -37,32 +42,6 @@ const redis = new Redis(REDIS_URL, {
 
 redis.on("connect", () => log.info("Redis connected"));
 redis.on("error", (err) => log.error({ err }, "Redis error"));
-
-// ─── Freqtrade API Helper ──────────────────────────────────────
-async function ftApi(endpoint, method = "GET", body = null) {
-  const url = `${FREQTRADE_API}/api/v1${endpoint}`;
-  const headers = {
-    Authorization:
-      "Basic " + Buffer.from(`${FT_USER}:${FT_PASS}`).toString("base64"),
-    "Content-Type": "application/json",
-  };
-
-  try {
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) {
-      log.warn({ status: res.status, endpoint }, "Freqtrade API error");
-      return null;
-    }
-    return await res.json();
-  } catch (err) {
-    log.error({ err, endpoint }, "Freqtrade API call failed");
-    return null;
-  }
-}
 
 // ─── Agent Definitions ─────────────────────────────────────────
 const agents = [
@@ -495,161 +474,15 @@ async function runMLStateRefresh(agent) {
   return finding;
 }
 
-// Spawn a background ML training job, stream logs to Redis, and persist job state.
-async function startTrainingJob(source = "api") {
-  const jobId =
-    Date.now().toString() + "-" + Math.random().toString(36).slice(2, 8);
-  const summaryKey = "trading:job:ml_training"; // current job summary
-  const jobLogsKey = `trading:jobs:ml_training:logs:${jobId}`;
-  const resultsKey = `trading:jobs:ml_training:results`;
-  const lockKey = "trading:job:ml_training_lock";
-
-  // Try to acquire a lock (prevent concurrent training runs)
-  const got = await redis.set(lockKey, jobId, "NX", "EX", 60 * 60); // 1h TTL
-  if (!got) {
-    const existing = await redis.get(lockKey);
-    throw new Error(
-      `Another ML training job is running (${existing || "unknown"})`,
-    );
-  }
-
-  // Prefer container-safe script (runs ml_optimizer.py directly)
-  const containerScript = "/app/scripts/ml-train-container.sh";
-  const hostScript = "/app/scripts/ml-train.sh";
-  const fs = await import("node:fs/promises");
-  let cmd, args;
-  try {
-    const cst = await fs.stat(containerScript).catch(() => null);
-    const hst = await fs.stat(hostScript).catch(() => null);
-    if (cst && cst.isFile()) {
-      cmd = "stdbuf";
-      args = ["-oL", "-eL", "bash", containerScript];
-    } else if (hst && hst.isFile()) {
-      cmd = "stdbuf";
-      args = ["-oL", "-eL", "bash", hostScript];
-    } else {
-      cmd = "sh";
-      args = [
-        "-c",
-        "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'",
-      ];
-    }
-  } catch (e) {
-    cmd = "sh";
-    args = [
-      "-c",
-      "echo 'ML training starting (simulation)'; for i in 1 2 3 4 5; do echo \"[ML] step $i - processing...\"; sleep 1; done; echo 'ML training finished'",
-    ];
-  }
-
-  let child;
-  try {
-    child = spawn(cmd, args, {
-      cwd: "/app",
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (err) {
-    // Release lock on spawn failure
-    await redis.del(lockKey).catch(() => {});
-    throw new Error("Failed to spawn training job: " + err.message);
-  }
-
-  const job = {
-    id: jobId,
-    status: "running",
-    startedAt: new Date().toISOString(),
-    pid: child.pid,
+// Spawn a background ML training job via job-manager module.
+// Re-exported for backward compatibility with HTTP routes.
+async function _startTrainingJob(source = "api") {
+  return startTrainingJob(redis, {
     source,
-  };
-
-  // Persist summary and index
-  await redis.set(summaryKey, JSON.stringify(job));
-  await redis.lpush(resultsKey, JSON.stringify(job));
-  await redis.ltrim(resultsKey, 0, 199);
-
-  const pushLog = async (line) => {
-    try {
-      await redis.lpush(jobLogsKey, line);
-      await redis.ltrim(jobLogsKey, 0, 999);
-      await redis.publish(
-        "trading:jobs:ml_training",
-        JSON.stringify({ jobId, line }),
-      );
-    } catch (e) {
-      log.warn({ err: e }, "Failed to push training log to Redis");
-    }
-  };
-
-  child.stdout.on("data", (buf) => {
-    const lines = buf.toString().split(/\r?\n/).filter(Boolean);
-    for (const l of lines) pushLog(l);
+    agents,
+    runMLStateRefresh,
+    discord,
   });
-  child.stderr.on("data", (buf) => {
-    const lines = buf.toString().split(/\r?\n/).filter(Boolean);
-    for (const l of lines) pushLog(`[ERR] ${l}`);
-  });
-
-  child.on("exit", async (code, signal) => {
-    job.status = code === 0 ? "finished" : "failed";
-    job.exitCode = code;
-    job.signal = signal;
-    job.finishedAt = new Date().toISOString();
-    try {
-      // Replace the running entry with the final state
-      await redis.set(summaryKey, JSON.stringify(job));
-      // Update the first element (running snapshot) to finished
-      await redis.lset(resultsKey, 0, JSON.stringify(job));
-      await redis.publish(
-        "trading:jobs:ml_training:finished",
-        JSON.stringify(job),
-      );
-    } catch (e) {
-      log.warn({ err: e }, "Failed to persist training job result");
-    }
-    // Release lock
-    try {
-      await redis.del(lockKey);
-    } catch (e) {}
-    log.info({ jobId, code, signal }, "ML training job finished");
-
-    // After successful training, refresh ML state in Redis
-    // so the dashboard immediately reflects new params.
-    if (code === 0) {
-      try {
-        const mlAgent = agents.find((a) => a.id === "ml-optimizer");
-        if (mlAgent) {
-          log.info("Refreshing ML state after successful training...");
-          await runMLStateRefresh(mlAgent);
-        }
-      } catch (e) {
-        log.warn({ err: e }, "Failed to refresh ML state after training");
-      }
-    }
-
-    // Discord notification
-    if (code === 0) {
-      discord
-        .sendAlert("success", `✅ ML training complete (job ${jobId})`)
-        .catch(() => {});
-    } else {
-      const msg = `❌ ML training FAILED (job ${jobId}, exit=${code})`;
-      discord.sendAlert("critical", msg).catch(() => {});
-      // Also publish to Redis alerts channel
-      redis
-        .publish(
-          "trading:alerts",
-          JSON.stringify({
-            alerts: [msg],
-            riskLevel: "HIGH",
-          }),
-        )
-        .catch(() => {});
-    }
-  });
-
-  log.info({ jobId, pid: child.pid }, "Started ML training job");
-  return job;
 }
 
 const taskRunners = {
@@ -748,6 +581,7 @@ function startScheduler() {
 
 // ─── Auth helpers ──────────────────────────────────────────────
 const API_KEY = process.env.ML_TRAIN_API_KEY || "";
+const ALLOW_OPEN_AUTH = process.env.ALLOW_OPEN_AUTH === "true";
 const ALLOWED_ORIGINS = (
   process.env.CORS_ORIGINS || "http://localhost:3000,http://dashboard:3000"
 )
@@ -755,7 +589,11 @@ const ALLOWED_ORIGINS = (
   .map((s) => s.trim());
 
 function checkAuth(req) {
-  if (!API_KEY) return true; // no key configured = open (dev mode)
+  if (!API_KEY) {
+    if (ALLOW_OPEN_AUTH) return true;
+    log.warn("Mutating request blocked: ML_TRAIN_API_KEY not set and ALLOW_OPEN_AUTH !== 'true'");
+    return false;
+  }
   const provided = req.headers["x-api-key"];
   return provided === API_KEY;
 }
@@ -972,7 +810,7 @@ const server = createServer(async (req, res) => {
       }
 
       try {
-        const job = await startTrainingJob("api");
+        const job = await _startTrainingJob("api");
         // Set 5-minute cooldown
         await redis.set(
           cdKey,
@@ -1022,8 +860,8 @@ const server = createServer(async (req, res) => {
         `🏃 Backtest started: ${strats.join(", ")} | Range: ${tr}`,
       );
 
-      // Run backtests in background
-      runBacktests(strats, tr).catch((err) => {
+      // Run backtests in background (delegated to job-manager)
+      runBacktests(strats, tr, redis, discord).catch((err) => {
         log.error({ err }, "Backtest pipeline failed");
         discord.sendAlert("critical", `❌ Backtest failed: ${err.message}`);
       });
@@ -1041,7 +879,7 @@ const server = createServer(async (req, res) => {
 
     // Get backtest results
     if (url.pathname === "/api/backtest/results") {
-      const results = await getBacktestResults();
+      const results = await getBacktestResults(redis);
       res.writeHead(200);
       res.end(JSON.stringify(results));
       return;
@@ -1070,7 +908,7 @@ const server = createServer(async (req, res) => {
         `📥 Downloading data: ${pairList.join(", ")} | ${tfList.join(", ")} | ${tr}`,
       );
 
-      downloadData(pairList, tfList, tr).catch((err) => {
+      downloadData(pairList, tfList, tr, discord).catch((err) => {
         log.error({ err }, "Data download failed");
       });
 
@@ -1127,188 +965,35 @@ const server = createServer(async (req, res) => {
   }
 });
 
-// ─── Backtest Helpers ──────────────────────────────────────────
-function getDefaultTimerange() {
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - 6);
-  const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
-  return `${fmt(start)}-${fmt(end)}`;
-}
-
-async function downloadData(pairs, timeframes, timerange) {
-  // Sanitize inputs
-  const safePat = /^[a-zA-Z0-9/:_\-. ]+$/;
-  const safePairs = pairs.filter((p) => safePat.test(p));
-  const safeTfs = timeframes.filter((t) => safePat.test(t));
-  const safeTimerange = /^\d{8}-\d{8}$/.test(timerange)
-    ? timerange
-    : "20240101-20241231";
-  if (!safePairs.length || !safeTfs.length) {
-    throw new Error("Invalid input characters in download params");
-  }
-
-  const args = [
-    "compose", "run", "--rm", "freqtrade",
-    "download-data",
-    "--config", "/freqtrade/config/config.json",
-    "--pairs", ...safePairs,
-    "--timeframes", ...safeTfs,
-    "--timerange", safeTimerange,
-  ];
-
-  return new Promise((resolve, reject) => {
-    log.info({ args }, "Downloading data...");
-    const proc = spawn("docker", args, { cwd: "/app", timeout: 600_000 });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => { stdout += d; });
-    proc.stderr.on("data", (d) => { stderr += d; });
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        log.error({ code, stderr }, "Data download failed");
-        reject(new Error(`download-data exited with code ${code}: ${stderr}`));
-        return;
-      }
-      log.info("Data download complete");
-      discord.sendAlert(
-        "success",
-        `✅ Data download complete: ${pairs.join(", ")}`,
-      );
-      resolve(stdout);
-    });
-    proc.on("error", (err) => {
-      log.error({ err }, "Data download spawn error");
-      reject(err);
-    });
-  });
-}
-
-async function runBacktests(strategies, timerange) {
-  const results = [];
-
-  for (const strategy of strategies) {
-    log.info({ strategy, timerange }, "Running backtest...");
-
-    try {
-      // Sanitize strategy name and timerange to prevent command injection
-      const safeStrategy = strategy.replace(/[^a-zA-Z0-9_]/g, "");
-      const safeTimerange = /^\d{8}-\d{8}$/.test(timerange)
-        ? timerange
-        : "20240101-20241231";
-      const output = await new Promise((resolve, reject) => {
-        const args = [
-          "compose", "run", "--rm", "freqtrade",
-          "backtesting",
-          "--config", "/freqtrade/config/config_backtest.json",
-          "--strategy", safeStrategy,
-          "--strategy-path", "/freqtrade/user_data/strategies",
-          "--timerange", safeTimerange,
-          "--timeframe", "5m",
-          "--enable-protections",
-          "--export", "trades",
-        ];
-        const proc = spawn("docker", args, { cwd: "/app", timeout: 600_000 });
-        let out = "";
-        proc.stdout.on("data", (d) => { out += d; });
-        proc.stderr.on("data", (d) => { out += d; });
-        proc.on("close", (code) => {
-          if (code !== 0) reject(new Error(`backtesting exited ${code}: ${out.slice(-500)}`));
-          else resolve(out);
-        });
-        proc.on("error", reject);
-      });
-
-      // Parse backtest output
-      const result = parseBacktestOutput(output, strategy, timerange);
-      results.push(result);
-
-      // Store in Redis
-      await redis.lpush("trading:backtest:results", JSON.stringify(result));
-      await redis.ltrim("trading:backtest:results", 0, 99);
-
-      // Notify Discord
-      await discord.sendBacktestResult(result);
-
-      log.info({ strategy, profit: result.profit }, "Backtest complete");
-    } catch (err) {
-      log.error({ err, strategy }, "Backtest failed");
-      results.push({
-        strategy,
-        timerange,
-        error: err.message,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
-  // Summary to Discord
-  const totalProfit = results
-    .filter((r) => r.profit)
-    .reduce((s, r) => s + (r.profit || 0), 0);
-  await discord.sendAlert(
-    totalProfit >= 0 ? "success" : "warning",
-    `🏁 Backtest suite complete!\n${results.map((r) => `• **${r.strategy}**: ${r.profit?.toFixed(2) || "ERROR"}% profit, ${r.totalTrades || 0} trades`).join("\n")}`,
-  );
-
-  return results;
-}
-
-function parseBacktestOutput(output, strategy, timerange) {
-  const lines = output.split("\n");
-  let profit = 0,
-    winRate = 0,
-    maxDrawdown = 0,
-    totalTrades = 0,
-    sharpe = 0;
-
-  for (const line of lines) {
-    const profitMatch = line.match(/Total profit\s+[\d.]+\s+.*?([\-\d.]+)\s*%/);
-    if (profitMatch) profit = parseFloat(profitMatch[1]);
-
-    const winMatch = line.match(/Win.*?([\d.]+)\s*%/);
-    if (winMatch) winRate = parseFloat(winMatch[1]);
-
-    const ddMatch = line.match(/Max.*?[Dd]rawdown.*?([\d.]+)\s*%/);
-    if (ddMatch) maxDrawdown = parseFloat(ddMatch[1]);
-
-    const tradeMatch = line.match(/Total.*?trades.*?(\d+)/);
-    if (tradeMatch) totalTrades = parseInt(tradeMatch[1]);
-
-    const sharpeMatch = line.match(/Sharpe.*?([\-\d.]+)/);
-    if (sharpeMatch) sharpe = parseFloat(sharpeMatch[1]);
-  }
-
-  return {
-    strategy,
-    timerange,
-    profit,
-    winRate,
-    maxDrawdown,
-    totalTrades,
-    sharpe,
-    timestamp: new Date().toISOString(),
-  };
-}
-
-async function getBacktestResults() {
-  try {
-    const raw = await redis.lrange("trading:backtest:results", 0, 49);
-    return raw.map((r) => JSON.parse(r));
-  } catch {
-    return [];
-  }
-}
-
 // ─── Startup ───────────────────────────────────────────────────
 async function main() {
   log.info("🚀 CC Trading Team Agent Coordinator starting...");
   log.info(`📡 Freqtrade API: ${FREQTRADE_API}`);
   log.info(`🗄️  Redis: ${REDIS_URL}`);
 
+  // ── Startup Validation ───────────────────────────────────
+  const warnings = [];
+  if (!API_KEY && !ALLOW_OPEN_AUTH) {
+    warnings.push("ML_TRAIN_API_KEY not set — mutating API endpoints are BLOCKED. Set ALLOW_OPEN_AUTH=true for dev mode.");
+  }
+  if (!API_KEY && ALLOW_OPEN_AUTH) {
+    warnings.push("ALLOW_OPEN_AUTH=true with no API key — mutating endpoints are OPEN (dev mode only!)");
+  }
+  if (FT_PASS === "SuperSecure123") {
+    warnings.push("Freqtrade API using default password — set FREQTRADE_PASS in .env for production");
+  }
+  if (!process.env.DISCORD_TOKEN) {
+    warnings.push("DISCORD_TOKEN not set — Discord bot will not connect");
+  }
+  for (const w of warnings) log.warn(`⚠️  ${w}`);
+  if (warnings.length) log.info(`${warnings.length} startup warning(s) — review .env config`);
+
   // Wait for Redis
   await redis.ping();
   log.info("✅ Redis connected");
+
+  // ── Startup Self-Test (delegated to ft-client) ──────────
+  await selfTestFT();
 
   // Initialize Discord bot
   const discordOk = await discord.initDiscord();

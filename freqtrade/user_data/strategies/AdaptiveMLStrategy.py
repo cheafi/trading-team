@@ -766,14 +766,42 @@ class AdaptiveMLStrategy(IStrategy):
 
     # ─── Trade Entry Confirmation (PRO Discipline) ────────
 
-    def _log_rejection(self, pair, side, reason, current_time):
-        """Persist trade rejection to decision journal."""
+    def _log_rejection(self, pair, side, reason, current_time,
+                       features=None):
+        """
+        Decision Journal v2 — persist trade rejection with context.
+        Each entry now includes: feature snapshot, model version,
+        risk state so operators can diagnose why the bot didn't trade.
+        """
         entry = {
             "time": str(current_time),
             "pair": pair,
             "side": side,
             "reason": reason,
+            # v2: risk state
+            "risk": {
+                "consecutive_losses": self._consecutive_losses,
+                "daily_pnl": round(self._daily_pnl, 6),
+                "daily_trades": self._daily_trades,
+            },
+            # v2: model version (best_params load timestamp)
+            "model_ts": self._last_model_load,
         }
+        # v2: feature snapshot (when dataframe row is available)
+        if features is not None:
+            snap_keys = [
+                "adx", "atr_norm", "ema_slope", "bb_width",
+                "vol_ratio", "rsi", "macd_hist", "direction_score",
+                "regime", "sub_regime", "trend_1h", "rsi_15m",
+                "volume", "volume_sma",
+            ]
+            snap = {}
+            for k in snap_keys:
+                v = features.get(k)
+                if v is not None and not (isinstance(v, float) and np.isnan(v)):
+                    snap[k] = round(float(v), 4) if isinstance(v, (float, np.floating)) else int(v)
+            entry["features"] = snap
+
         self._rejection_log.append(entry)
         if len(self._rejection_log) > self._MAX_REJECTIONS:
             self._rejection_log = self._rejection_log[-self._MAX_REJECTIONS :]
@@ -865,12 +893,14 @@ class AdaptiveMLStrategy(IStrategy):
         ema_slope_val = last.get("ema_slope", 0)
         if side == "long" and adx_val > 40 and ema_slope_val < -0.5:
             self._log_rejection(
-                pair, side, f"extreme_downtrend_adx{adx_val:.0f}", current_time
+                pair, side, f"extreme_downtrend_adx{adx_val:.0f}", current_time,
+                features=last,
             )
             return False
         if side == "short" and adx_val > 40 and ema_slope_val > 0.5:
             self._log_rejection(
-                pair, side, f"extreme_uptrend_adx{adx_val:.0f}", current_time
+                pair, side, f"extreme_uptrend_adx{adx_val:.0f}", current_time,
+                features=last,
             )
             return False
 
@@ -879,7 +909,8 @@ class AdaptiveMLStrategy(IStrategy):
         vol_sma = last.get("volume_sma", 1)
         if vol_sma > 0 and vol < vol_sma * 0.4:
             self._log_rejection(
-                pair, side, f"low_volume_{vol:.0f}_vs_{vol_sma:.0f}", current_time
+                pair, side, f"low_volume_{vol:.0f}_vs_{vol_sma:.0f}", current_time,
+                features=last,
             )
             return False
 
@@ -887,11 +918,17 @@ class AdaptiveMLStrategy(IStrategy):
         trend_1h = last.get("trend_1h", 0)
         if side == "long" and trend_1h < 0:
             if last.get("adx", 0) > 35:
-                self._log_rejection(pair, side, "1h_trend_disagree_long", current_time)
+                self._log_rejection(
+                    pair, side, "1h_trend_disagree_long", current_time,
+                    features=last,
+                )
                 return False
         if side == "short" and trend_1h > 0:
             if last.get("adx", 0) > 35:
-                self._log_rejection(pair, side, "1h_trend_disagree_short", current_time)
+                self._log_rejection(
+                    pair, side, "1h_trend_disagree_short", current_time,
+                    features=last,
+                )
                 return False
 
         # Anti-pattern filter
@@ -911,6 +948,7 @@ class AdaptiveMLStrategy(IStrategy):
                             side,
                             f"anti_pattern_hour_{current_time.hour}",
                             current_time,
+                            features=last,
                         )
                         return False
                     toxic_days = ap.get("toxic_days", [])
@@ -920,6 +958,7 @@ class AdaptiveMLStrategy(IStrategy):
                             side,
                             f"anti_pattern_day_{current_time.weekday()}",
                             current_time,
+                            features=last,
                         )
                         return False
             except Exception:
@@ -953,6 +992,7 @@ class AdaptiveMLStrategy(IStrategy):
                             side,
                             f"quality_model_{quality:.3f}<{min_quality:.3f}",
                             current_time,
+                            features=last,
                         )
                         return False
             except Exception:
@@ -970,6 +1010,7 @@ class AdaptiveMLStrategy(IStrategy):
                         side,
                         f"regime_transition_{prev_regime}->{regime_now}",
                         current_time,
+                        features=last,
                     )
                     return False
 

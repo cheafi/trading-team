@@ -153,35 +153,59 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Removed hardcoded API secrets from config.json and config_backtest.json (env-override placeholders)
 - [x] Cleaned training_log.json: removed 1 placeholder entry with impossible metrics
 
+### Iteration 10 — Governance & Security (Day 1–30 items)
+- [x] Enabled GitHub security stack: CodeQL, Dependabot, secret scanning
+- [x] Closed auth gap: mutating endpoints require API key or explicit ALLOW_OPEN_AUTH=true
+- [x] Added startup env validation (warns on default passwords, missing keys, open auth)
+- [x] Fixed docs/index.html meta description: removed "Autonomous AI" / "ML-optimized" inflation
+- [x] Fixed agents/SOUL.md: honest identity (6 pairs, R2 short specialist, not autonomous AI)
+- [x] Fixed coordinator downloadData(): config.json → config_backtest.json
+- [x] Injected ML_TRAIN_API_KEY + ALLOW_OPEN_AUTH into agent-runner container
+
+### Iteration 11 — Architecture Split (Phase 1 completion + Phase 2 start)
+- [x] Startup self-test: FT API connectivity check + config parity validation (ft-client.mjs selfTestFT)
+- [x] CI gate: strategy-gate.yml runs lookahead-analysis + smoke backtest on strategy PRs
+- [x] Decision journal v2: rejections now include feature snapshot, model version, risk state
+- [x] Split coordinator.mjs 1405→1029 lines: extracted ft-client.mjs (94), job-manager.mjs (390)
+- [x] Split ml_optimizer.py: extracted ml_scorer.py (310 lines), ml_analyzer.py (440 lines)
+- [x] ml_optimizer.py retains inline defs as transition fallback; imports ready to activate
+
 ---
 
-## Roadmap
+## 90-Day Roadmap
 
-### Priority 1 — Operator Observability
-- [x] Dashboard panel: latest trade rejection reasons
-- [ ] Dashboard panel: entry-tag distribution (what signals fire)
-- [ ] Dashboard panel: exit-reason distribution (SL vs ROI vs time)
-- [ ] Dashboard panel: live regime from current candle analysis
-- [ ] Dashboard panel: session PnL by UTC block
-- [ ] Add durable DB (Postgres/TimescaleDB) for trades and decisions
+### Phase 1: Truthfulness & Safety (Days 1–30) ✅ COMPLETE
+- [x] Every surface shows actual live strategy identity
+- [x] State refresh cleanly separated from real training
+- [x] Rejection journal: strategy → disk → API → dashboard
+- [x] CodeQL, secret scanning, Dependabot enabled
+- [x] All mutating routes behind auth
+- [x] Startup validation for env/config/auth mismatches
+- [x] Decision journal v2: add feature snapshot, model version, risk state per entry
+- [x] CI gate: run `freqtrade lookahead-analysis` on every strategy PR
+- [x] Startup self-test: verify FT API connectivity + config parity before accepting traffic
 
-### Priority 2 — Control Plane
-- [ ] Move to slash commands in Discord (not prefix-message)
-- [ ] Add role-based permissions for train/backtest/pause
-- [ ] Operator audit trail for web-triggered actions
-- [ ] Full training pipeline: download data → backtest → retrain → publish
-- [ ] Explicit training UX: "retrain from existing backtests" vs "full refresh"
+### Phase 2: Architecture & Reproducibility (Days 31–60)
+- [x] Split coordinator.mjs → ft-client.mjs, job-manager.mjs (notifier.mjs, router.mjs deferred)
+- [x] Split ml_optimizer.py → ml_scorer.py, ml_analyzer.py (trainer/registry deferred)
+- [x] CI pipeline: strategy-gate.yml (lookahead + smoke backtest on PRs)
+- [ ] Activate ml_optimizer imports (remove inline fallback definitions)
+- [ ] Introduce proper job queue (Bull/BullMQ) + durable DB (Postgres or SQLite)
+- [ ] Freeze pair universe for research; make universe changes explicit and versioned
+- [ ] Canonical research config vs live config with explicit diff
 
-### Priority 3 — ML Integrity
+### Phase 3: Intelligence That Deserves the Name (Days 61–90)
+- [ ] Model registry: training window, feature hash, OOS metrics, drift status, rollback
+- [ ] Rebuild regime/quality models from strictly decision-time features
+- [ ] Shadow mode: candidate model makes decisions but cannot trade
+- [ ] Trade replay: candle state + features + risk filters + exit cause + PnL attribution
+- [ ] Risk cockpit: gross/net exposure, concentration, worst-case loss, drift warnings
+- [ ] Public site → clean docs/landing/trust layer; operator console → authenticated app
+
+### Deferred
+- [ ] Move to Discord slash commands (not prefix-message)
+- [ ] Role-based permissions for train/backtest/pause
+- [ ] OpenTelemetry: traces, metrics, logs across all services
 - [ ] Wire regime model into live decisions (or remove training code)
-- [ ] Rebuild quality model with richer entry-known features
 - [ ] Proper walk-forward: refit per slice + forward replay
 - [ ] Validate R0/R1/R3 edges before re-enabling
-
-### Priority 4 — Code Quality
-- [x] Use `spawn()` with argv arrays instead of `exec()` for commands
-- [x] Add `package-lock.json` + `npm ci` for reproducible builds
-- [x] Standardize dashboard language (currently mixed Chinese/English)
-- [x] Add explicit timezone labels to all timestamps
-- [ ] Split coordinator.mjs (1340 lines) into modules
-- [ ] Split ml_optimizer.py (2083 lines) into modules

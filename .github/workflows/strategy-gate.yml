@@ -1,0 +1,88 @@
+# CI Gate — Strategy Quality Checks
+# Runs lookahead-analysis + basic backtest validation on strategy PRs.
+# Catches future-data leakage and broken strategy logic before merge.
+
+name: Strategy Gate
+
+on:
+  pull_request:
+    paths:
+      - "freqtrade/user_data/strategies/**"
+      - "freqtrade/config/**"
+
+jobs:
+  lookahead-analysis:
+    name: Lookahead Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Freqtrade image
+        run: |
+          docker compose build freqtrade
+
+      - name: Download minimal test data
+        run: |
+          docker compose run --rm -T freqtrade download-data \
+            --config /freqtrade/config/config_backtest.json \
+            --pairs ETH/USDT:USDT \
+            --timeframes 5m 15m 1h \
+            --timerange 20250101-20250201
+
+      - name: Run lookahead-analysis (all strategies)
+        run: |
+          STRATEGIES="A52Strategy OPTStrategy A51Strategy A31Strategy AdaptiveMLStrategy"
+          FAILED=0
+          for STRAT in $STRATEGIES; do
+            echo "━━━ Checking $STRAT for lookahead bias ━━━"
+            docker compose run --rm -T freqtrade lookahead-analysis \
+              --config /freqtrade/config/config_backtest.json \
+              --strategy "$STRAT" \
+              --timeframe 5m \
+              --timerange 20250101-20250201 \
+              --minimum-trade-amount 1 \
+              2>&1 || FAILED=1
+            echo ""
+          done
+          if [ $FAILED -ne 0 ]; then
+            echo "❌ Lookahead bias detected in one or more strategies"
+            exit 1
+          fi
+
+  smoke-backtest:
+    name: Smoke Backtest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Freqtrade image
+        run: |
+          docker compose build freqtrade
+
+      - name: Download minimal test data
+        run: |
+          docker compose run --rm -T freqtrade download-data \
+            --config /freqtrade/config/config_backtest.json \
+            --pairs ETH/USDT:USDT BTC/USDT:USDT \
+            --timeframes 5m 15m 1h \
+            --timerange 20250101-20250301
+
+      - name: Backtest AdaptiveMLStrategy (2 months)
+        run: |
+          docker compose run --rm -T freqtrade backtesting \
+            --config /freqtrade/config/config_backtest.json \
+            --strategy AdaptiveMLStrategy \
+            --timeframe 5m \
+            --timerange 20250101-20250301 \
+            --enable-protections \
+            2>&1
+
+      - name: Verify strategy loads without errors
+        run: |
+          docker compose run --rm -T freqtrade list-strategies \
+            --strategy-path /freqtrade/user_data/strategies \
+            2>&1
