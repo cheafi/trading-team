@@ -9,6 +9,7 @@ import { TradesPanel } from "@/components/TradesPanel";
 import { PairPerformance } from "@/components/PairPerformance";
 import { EquityMini } from "@/components/EquityMini";
 import { DiagnosticsPanel } from "@/components/DiagnosticsPanel";
+import { RiskCockpit } from "@/components/RiskCockpit";
 
 export default function Home() {
   return (
@@ -67,6 +68,14 @@ export default function Home() {
           <span className="text-xl">🔍</span> Operator Diagnostics
         </h2>
         <DiagnosticsPanel />
+      </section>
+
+      {/* Risk Cockpit: exposure, drift, model versions */}
+      <section className="mb-6">
+        <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
+          <span className="text-xl">🛡️</span> Risk Cockpit
+        </h2>
+        <RiskCockpit />
       </section>
     </main>
   );

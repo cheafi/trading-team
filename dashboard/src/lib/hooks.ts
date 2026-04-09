@@ -204,3 +204,92 @@ export function useRejections(limit = 50) {
     }
   );
 }
+
+// ─── Risk Cockpit ────────────────────────────────────────
+
+export interface RiskCockpitData {
+  open_trades: number;
+  gross_exposure: number;
+  pair_exposure: Record<string, number>;
+  max_concentration: number;
+  worst_case_loss: number;
+  max_drawdown: number;
+  max_drawdown_abs: number;
+  model_drift: {
+    status: string;
+    drifted: boolean;
+    active_version?: string;
+    active_since?: string;
+    params_hash?: string;
+  };
+}
+
+export function useRiskCockpit() {
+  return useSWR<RiskCockpitData>("/api/risk/cockpit", fetcher, {
+    refreshInterval: 10000,
+  });
+}
+
+// ─── Model Registry ──────────────────────────────────────
+
+export interface ModelVersion {
+  version_id: string;
+  timestamp: string;
+  params_hash: string;
+  artifacts: string[];
+  oos_metrics: {
+    total_trades?: number;
+    avg_win_rate?: number;
+    strategies_scored?: number;
+  };
+  drift: Record<string, unknown> | null;
+  total_trades?: number;
+  trigger?: string;
+}
+
+export interface RegistryData {
+  active: string | null;
+  versions: ModelVersion[];
+}
+
+export function useModelRegistry() {
+  return useSWR<RegistryData>("/api/ml/registry", fetcher, {
+    refreshInterval: 30000,
+    fallbackData: { active: null, versions: [] },
+  });
+}
+
+// ─── Trade Replay ────────────────────────────────────────
+
+export interface ReplayEntry {
+  event: "entry" | "exit";
+  time: string;
+  pair: string;
+  side: string;
+  entry_tag?: string;
+  exit_reason?: string;
+  profit_ratio?: number;
+  rate?: number;
+  entry_rate?: number;
+  exit_rate?: number;
+  duration_min?: number;
+  regime?: number;
+  features?: Record<string, number>;
+  features_at_exit?: Record<string, number>;
+  risk?: {
+    consecutive_losses: number;
+    daily_pnl: number;
+    daily_trades?: number;
+  };
+}
+
+export function useTradeReplay(limit = 50) {
+  return useSWR<ReplayEntry[]>(
+    `/api/diagnostics/replay?limit=${limit}`,
+    fetcher,
+    {
+      refreshInterval: 15000,
+      fallbackData: [],
+    }
+  );
+}

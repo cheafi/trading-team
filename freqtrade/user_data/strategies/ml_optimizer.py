@@ -46,6 +46,7 @@ from ml_analyzer import (
     analyze_mfe_mae, compute_kelly_fraction, walk_forward_validate,
     monte_carlo_equity, analyze_equity_curve, analyze_losing_patterns,
 )
+from model_registry import ModelRegistry
 
 BACKTEST_DIR = Path(os.getenv("BACKTEST_DIR", "/freqtrade/user_data/backtest_results"))
 MODEL_DIR = Path(os.getenv("MODEL_DIR", "/freqtrade/user_data/ml_models"))
@@ -1135,6 +1136,34 @@ def main():
         print("\nAnti-patterns saved: {}".format(anti_pattern_path))
     except Exception as e:
         print("Warning: Could not save anti-patterns: " + str(e))
+
+    # 20. Register model version in registry
+    print("\n" + "-" * 70)
+    print("MODEL REGISTRY — VERSION TRACKING")
+    print("-" * 70)
+    try:
+        registry = ModelRegistry(MODEL_DIR)
+        version_id = registry.register(extra_metadata={
+            "total_trades": total,
+            "strategies": list(strat_trades.keys()),
+            "trigger": "retrain" if args.retrain else "auto",
+        })
+        if version_id:
+            active = registry.get_active()
+            drift = active.get("drift")
+            drift_str = " (DRIFTED)" if drift else ""
+            print("  Registered version: {}{}".format(
+                version_id, drift_str))
+            print("  Params hash: {}".format(
+                active.get("params_hash", "?")))
+            print("  Artifacts: {}".format(
+                ", ".join(active.get("artifacts", []))))
+            n_versions = len(registry.list_versions()["versions"])
+            print("  Total versions: {}".format(n_versions))
+        else:
+            print("  (no artifacts to register)")
+    except Exception as e:
+        print("  Warning: Registry failed: {}".format(e))
 
     print("\n" + "=" * 70)
     print("ML Optimization v4 PRO complete!")

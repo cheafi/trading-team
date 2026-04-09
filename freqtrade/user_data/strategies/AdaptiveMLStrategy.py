@@ -60,6 +60,9 @@ ANTI_PATTERN_PATH = MODEL_DIR / "anti_patterns.json"
 # Decision journal — persists every trade rejection reason
 REJECTION_LOG_PATH = MODEL_DIR / "rejection_journal.json"
 
+# Trade replay — per-trade entry/exit with full context
+TRADE_REPLAY_PATH = MODEL_DIR / "trade_replay.json"
+
 # Fee structure
 ROUND_TRIP_FEE = 0.001  # 0.10% (Binance futures maker+taker)
 
@@ -130,6 +133,8 @@ class AdaptiveMLStrategy(IStrategy):
     _paused_until = None  # cooldown timestamp
     _rejection_log = []  # decision journal: last 100 rejections
     _MAX_REJECTIONS = 100
+    _trade_replay = []  # trade replay: entry+exit decisions
+    _MAX_REPLAY = 200
 
     # ─── Multi-timeframe informative pairs ───────────────
     def informative_pairs(self):
@@ -789,18 +794,7 @@ class AdaptiveMLStrategy(IStrategy):
         }
         # v2: feature snapshot (when dataframe row is available)
         if features is not None:
-            snap_keys = [
-                "adx", "atr_norm", "ema_slope", "bb_width",
-                "vol_ratio", "rsi", "macd_hist", "direction_score",
-                "regime", "sub_regime", "trend_1h", "rsi_15m",
-                "volume", "volume_sma",
-            ]
-            snap = {}
-            for k in snap_keys:
-                v = features.get(k)
-                if v is not None and not (isinstance(v, float) and np.isnan(v)):
-                    snap[k] = round(float(v), 4) if isinstance(v, (float, np.floating)) else int(v)
-            entry["features"] = snap
+            entry["features"] = self._snap_features(features)
 
         self._rejection_log.append(entry)
         if len(self._rejection_log) > self._MAX_REJECTIONS:
@@ -809,6 +803,113 @@ class AdaptiveMLStrategy(IStrategy):
         try:
             with open(REJECTION_LOG_PATH, "w") as f:
                 json.dump(self._rejection_log[-50:], f, indent=1)
+        except Exception:
+            pass
+
+    def _snap_features(self, row):
+        """Extract feature snapshot from a dataframe row."""
+        snap_keys = [
+            "adx", "atr_norm", "ema_slope", "bb_width",
+            "vol_ratio", "rsi", "macd_hist", "direction_score",
+            "regime", "sub_regime", "trend_1h", "rsi_15m",
+            "volume", "volume_sma",
+        ]
+        snap = {}
+        for k in snap_keys:
+            v = row.get(k)
+            if v is not None and not (
+                isinstance(v, float) and np.isnan(v)
+            ):
+                snap[k] = (
+                    round(float(v), 4)
+                    if isinstance(v, (float, np.floating))
+                    else int(v)
+                )
+        return snap
+
+    def _log_trade_entry(self, pair, side, entry_tag, regime,
+                         rate, current_time, features_row):
+        """
+        Trade Replay — log accepted entry with full context.
+        Captures: features, risk state, model version, regime params.
+        """
+        params = self._get_regime_params(regime)
+        entry = {
+            "event": "entry",
+            "time": str(current_time),
+            "pair": pair,
+            "side": side,
+            "entry_tag": entry_tag,
+            "rate": round(float(rate), 8),
+            "regime": regime,
+            "features": self._snap_features(features_row),
+            "risk": {
+                "consecutive_losses": self._consecutive_losses,
+                "daily_pnl": round(self._daily_pnl, 6),
+                "daily_trades": self._daily_trades,
+            },
+            "params": {
+                "c": params.get("c"),
+                "e": params.get("e"),
+                "sl": params.get("sl"),
+                "kelly_fraction": params.get("kelly_fraction"),
+            },
+            "model_ts": self._last_model_load,
+        }
+        self._trade_replay.append(entry)
+        self._persist_replay()
+
+    def _log_trade_exit(self, pair, trade, exit_reason, profit,
+                        rate, current_time):
+        """
+        Trade Replay — log exit with PnL attribution.
+        Captures: exit cause, profit, duration, entry tag.
+        """
+        try:
+            duration = (
+                current_time - trade.open_date_utc
+            ).total_seconds() / 60
+        except Exception:
+            duration = 0
+
+        # Get current features for exit-time context
+        features = {}
+        try:
+            df, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
+            if df is not None and len(df) > 0:
+                features = self._snap_features(df.iloc[-1])
+        except Exception:
+            pass
+
+        entry = {
+            "event": "exit",
+            "time": str(current_time),
+            "pair": pair,
+            "side": "short" if trade.is_short else "long",
+            "exit_reason": exit_reason,
+            "profit_ratio": round(float(profit), 6),
+            "entry_rate": round(float(trade.open_rate), 8),
+            "exit_rate": round(float(rate), 8),
+            "duration_min": round(duration, 1),
+            "entry_tag": trade.enter_tag,
+            "features_at_exit": features,
+            "risk": {
+                "consecutive_losses": self._consecutive_losses,
+                "daily_pnl": round(self._daily_pnl, 6),
+            },
+        }
+        self._trade_replay.append(entry)
+        self._persist_replay()
+
+    def _persist_replay(self):
+        """Persist trade replay log to disk (last N entries)."""
+        if len(self._trade_replay) > self._MAX_REPLAY:
+            self._trade_replay = self._trade_replay[
+                -self._MAX_REPLAY:
+            ]
+        try:
+            with open(TRADE_REPLAY_PATH, "w") as f:
+                json.dump(self._trade_replay[-100:], f, indent=1)
         except Exception:
             pass
 
@@ -1015,6 +1116,11 @@ class AdaptiveMLStrategy(IStrategy):
                     return False
 
         self._daily_trades += 1
+
+        # Trade replay: log accepted entry with full context
+        self._log_trade_entry(
+            pair, side, entry_tag, regime, rate, current_time, last,
+        )
         return True
 
     # ─── Dynamic Stoploss (MFE-Calibrated) ────────────────
@@ -1145,5 +1251,10 @@ class AdaptiveMLStrategy(IStrategy):
         self._equity_curve.append(prev + profit)
         if len(self._equity_curve) > 100:
             self._equity_curve = self._equity_curve[-100:]
+
+        # Trade replay: log exit with PnL attribution
+        self._log_trade_exit(
+            pair, trade, exit_reason, profit, rate, current_time,
+        )
 
         return True

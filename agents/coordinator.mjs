@@ -956,6 +956,142 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // ─── Model Registry API ────────────────────────────────────
+    if (url.pathname === "/api/ml/registry") {
+      try {
+        const fs = await import("node:fs/promises");
+        const raw = await fs.readFile(
+          "/freqtrade/user_data/ml_models/registry.json",
+          "utf8",
+        );
+        res.writeHead(200);
+        res.end(raw);
+      } catch {
+        res.writeHead(200);
+        res.end(JSON.stringify({ active: null, versions: [] }));
+      }
+      return;
+    }
+
+    // Rollback model version
+    if (url.pathname === "/api/ml/rollback" && req.method === "POST") {
+      try {
+        const body = await new Promise((resolve) => {
+          let data = "";
+          req.on("data", (c) => (data += c));
+          req.on("end", () => resolve(JSON.parse(data)));
+        });
+        const versionId = body.version_id;
+        if (!versionId) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "version_id required" }));
+          return;
+        }
+        // Delegate to Python model_registry
+        const { execSync } = await import("node:child_process");
+        const cmd = `cd /freqtrade/user_data/strategies && python3 -c "
+from model_registry import ModelRegistry
+r = ModelRegistry()
+r.rollback('${versionId.replace(/'/g, "")}')
+print('OK')
+"`;
+        execSync(cmd, { timeout: 10000 });
+        res.writeHead(200);
+        res.end(JSON.stringify({ status: "ok", rolled_back_to: versionId }));
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: String(err.message || err) }));
+      }
+      return;
+    }
+
+    // ─── Trade Replay API ──────────────────────────────────────
+    if (url.pathname === "/api/diagnostics/replay") {
+      try {
+        const fs = await import("node:fs/promises");
+        const raw = await fs.readFile(
+          "/freqtrade/user_data/ml_models/trade_replay.json",
+          "utf8",
+        );
+        const entries = JSON.parse(raw);
+        const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+        const recent = Array.isArray(entries)
+          ? entries.slice(-limit).reverse()
+          : [];
+        res.writeHead(200);
+        res.end(JSON.stringify(recent));
+      } catch {
+        res.writeHead(200);
+        res.end(JSON.stringify([]));
+      }
+      return;
+    }
+
+    // ─── Risk Cockpit API ──────────────────────────────────────
+    if (url.pathname === "/api/risk/cockpit") {
+      try {
+        // Aggregate risk metrics from FT API
+        const [status, profit, performance] = await Promise.all([
+          ftApi("/status"),
+          ftApi("/profit"),
+          ftApi("/performance"),
+        ]);
+
+        const openTrades = Array.isArray(status) ? status : [];
+        const totalExposure = openTrades.reduce(
+          (sum, t) => sum + Math.abs(t.stake_amount || 0),
+          0,
+        );
+        const pairExposure = {};
+        for (const t of openTrades) {
+          const p = t.pair || "unknown";
+          pairExposure[p] = (pairExposure[p] || 0) + Math.abs(t.stake_amount || 0);
+        }
+        const maxConcentration = Math.max(0, ...Object.values(pairExposure));
+        const worstCase = openTrades.reduce(
+          (sum, t) => sum + Math.abs(t.stake_amount || 0) * Math.abs(t.stoploss || 0.025),
+          0,
+        );
+
+        // Model drift check
+        let drift = { status: "unknown", drifted: false };
+        try {
+          const fs = await import("node:fs/promises");
+          const reg = JSON.parse(
+            await fs.readFile("/freqtrade/user_data/ml_models/registry.json", "utf8"),
+          );
+          const active = reg.versions?.find((v) => v.version_id === reg.active);
+          drift = {
+            status: active ? "tracked" : "untracked",
+            drifted: false,
+            active_version: reg.active,
+            active_since: active?.timestamp,
+            params_hash: active?.params_hash,
+          };
+        } catch {
+          // Registry doesn't exist yet
+        }
+
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            open_trades: openTrades.length,
+            gross_exposure: totalExposure,
+            pair_exposure: pairExposure,
+            max_concentration: maxConcentration,
+            worst_case_loss: worstCase,
+            max_drawdown: profit?.max_drawdown || 0,
+            max_drawdown_abs: profit?.max_drawdown_abs || 0,
+            model_drift: drift,
+          }),
+        );
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: String(err.message || err) }));
+      }
+      return;
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: "Not found" }));
   } catch (err) {

@@ -195,11 +195,11 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Canonical config diff: diff-configs.sh + config_reference.json snapshot
 
 ### Phase 3: Intelligence That Deserves the Name (Days 61–90)
-- [ ] Model registry: training window, feature hash, OOS metrics, drift status, rollback
+- [x] Model registry: version tracking, drift detection, rollback (model_registry.py)
 - [ ] Rebuild regime/quality models from strictly decision-time features
 - [ ] Shadow mode: candidate model makes decisions but cannot trade
-- [ ] Trade replay: candle state + features + risk filters + exit cause + PnL attribution
-- [ ] Risk cockpit: gross/net exposure, concentration, worst-case loss, drift warnings
+- [x] Trade replay: entry+exit logging with features, risk state, PnL attribution
+- [x] Risk cockpit: exposure, concentration, worst-case loss, drift warnings (dashboard)
 - [ ] Public site → clean docs/landing/trust layer; operator console → authenticated app
 
 ### Deferred
