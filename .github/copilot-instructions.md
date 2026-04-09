@@ -36,8 +36,7 @@ AdaptiveMLStrategy hot-reloads `ml_models/best_params.json` every 300s — **nev
 
 ```
 backtest_results/*.json → ml_optimizer.py → ml_models/
-    ├── regime_model.pkl       (trained but NOT used in live decisions)
-    ├── quality_model.pkl      (3-feature session/direction prior — hour, weekday, side)
+    ├── quality_model.pkl      (5-feature: hour, weekday, is_short, regime, leverage)
     ├── best_params.json       (per-regime: c, e, sl, roi_table, kelly_fraction)
     ├── discipline_params.json (cooldown, daily loss limit)
     ├── anti_patterns.json     (toxic hours/days learned from losses)
@@ -45,8 +44,8 @@ backtest_results/*.json → ml_optimizer.py → ml_models/
 ```
 
 **Honest ML assessment:**
-- Quality model uses `[hour, weekday, is_short]` — a session-direction prior, not deep trade intelligence.
-- Regime model is trained but NOT loaded by the live strategy.
+- Quality model uses `[hour, weekday, is_short, regime, leverage]` — a session-direction-regime prior, not deep trade intelligence.
+- Regime model has been REMOVED (was trained but never loaded by live strategy).
 - Training via API relearns from existing backtests — it does NOT download fresh data or run new backtests.
 
 ## Critical Developer Workflows

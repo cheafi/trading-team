@@ -21,13 +21,12 @@ for STRATEGY in "${STRATEGIES[@]}"; do
 	echo "🏃 Backtesting: $STRATEGY"
 	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-	docker compose run --rm -T freqtrade backtesting \
+	docker compose exec -T freqtrade freqtrade backtesting \
 		--config /freqtrade/config/config_backtest.json \
 		--strategy "$STRATEGY" \
 		--strategy-path /freqtrade/user_data/strategies \
 		--timerange "$TIMERANGE" \
 		--timeframe 5m \
-		--enable-protections \
 		--export trades ||
 		echo "⚠️  $STRATEGY backtest failed"
 

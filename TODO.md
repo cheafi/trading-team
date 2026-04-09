@@ -190,13 +190,12 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Split ml_optimizer.py → ml_scorer.py, ml_analyzer.py (trainer/registry deferred)
 - [x] CI pipeline: strategy-gate.yml (lookahead + smoke backtest on PRs)
 - [x] Activate ml_optimizer imports (removed 947 lines inline fallback; 2100→1149 lines)
-- [ ] Introduce proper job queue (Bull/BullMQ) + durable DB (Postgres or SQLite)
 - [x] Freeze pair universe: pair_universe.json + validate_pairs.py + startup check
 - [x] Canonical config diff: diff-configs.sh + config_reference.json snapshot
 
 ### Phase 3: Intelligence That Deserves the Name (Days 61–90)
 - [x] Model registry: version tracking, drift detection, rollback (model_registry.py)
-- [ ] Rebuild regime/quality models from strictly decision-time features
+- [x] Quality model expanded: 3→5 features (hour, weekday, is_short, regime, leverage)
 - [ ] Shadow mode: candidate model makes decisions but cannot trade
 - [x] Trade replay: entry+exit logging with features, risk state, PnL attribution
 - [x] Risk cockpit: exposure, concentration, worst-case loss, drift warnings (dashboard)
@@ -206,6 +205,8 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [ ] Move to Discord slash commands (not prefix-message)
 - [ ] Role-based permissions for train/backtest/pause
 - [ ] OpenTelemetry: traces, metrics, logs across all services
-- [ ] Wire regime model into live decisions (or remove training code)
+- [x] ~~Wire regime model into live decisions (or remove training code)~~ Removed dead regime model
 - [ ] Proper walk-forward: refit per slice + forward replay
 - [ ] Validate R0/R1/R3 edges before re-enabling
+- [ ] Full indicator features in quality model (ADX, ATR, BB_width, vol_ratio) — needs trade replay data accumulation
+- [ ] Introduce proper job queue (Bull/BullMQ) + durable DB (Postgres or SQLite)

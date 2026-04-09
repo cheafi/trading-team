@@ -1065,7 +1065,7 @@ class AdaptiveMLStrategy(IStrategy):
             except Exception:
                 pass
 
-        # Quality model gate (session-direction prior)
+        # Quality model gate (session-direction-regime prior)
         if self._quality_model_data is not None:
             try:
                 qm = self._quality_model_data
@@ -1075,12 +1075,17 @@ class AdaptiveMLStrategy(IStrategy):
                 min_quality = thresholds.get("min_quality", 0.5)
 
                 if model and scaler and hasattr(current_time, "hour"):
+                    leverage = float(
+                        kwargs.get("leverage", 1) or 1
+                    )
                     features = np.array(
                         [
                             [
                                 current_time.hour,
                                 current_time.weekday(),
                                 1 if side == "short" else 0,
+                                regime,
+                                leverage,
                             ]
                         ]
                     )

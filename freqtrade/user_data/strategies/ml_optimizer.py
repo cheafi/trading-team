@@ -52,7 +52,6 @@ BACKTEST_DIR = Path(os.getenv("BACKTEST_DIR", "/freqtrade/user_data/backtest_res
 MODEL_DIR = Path(os.getenv("MODEL_DIR", "/freqtrade/user_data/ml_models"))
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-REGIME_MODEL_PATH = MODEL_DIR / "regime_model.pkl"
 BEST_PARAMS_PATH = MODEL_DIR / "best_params.json"
 TRAINING_LOG_PATH = MODEL_DIR / "training_log.json"
 PERF_HISTORY_PATH = MODEL_DIR / "performance_history.json"
@@ -352,12 +351,12 @@ def train_trade_quality_model(trades):
     Train a model that scores trade QUALITY (0-100).
     Quality = probability of being a winner * expected profit magnitude.
 
-    Features used:
-    - Hour of day, day of week (session quality)
-    - Price range (volatility context)
-    - Is short (directional bias)
-    - Duration bucket
-    - MFE/MAE characteristics
+    Features (5, all entry-known):
+    - hour: Hour of day (UTC) — session quality
+    - weekday: Day of week — session quality
+    - is_short: Directional bias
+    - regime: Market regime at entry (parsed from enter_tag)
+    - leverage: Position leverage
 
     Returns (model, scaler, quality_thresholds).
     """
@@ -387,12 +386,24 @@ def train_trade_quality_model(trades):
 
         is_short = 1 if t.get("is_short", False) else 0
 
-        # Only use entry-known features (no duration, stake, leverage,
-        # price_range — those are future-known or circular)
+        # Parse regime from enter_tag (e.g. "ml_a52_r2_short")
+        regime = 2  # default RANGING
+        tag = t.get("enter_tag", "") or ""
+        if "_r" in tag:
+            try:
+                regime = int(tag.split("_r")[1][0])
+            except (ValueError, IndexError):
+                pass
+
+        leverage = float(t.get("leverage", 1) or 1)
+
+        # 5 entry-known features
         features.append([
             dt.hour,
             dt.weekday(),
             is_short,
+            regime,
+            leverage,
         ])
 
         # Quality label: good trade = profit > fees
@@ -674,62 +685,6 @@ def _default_regime_params(regime_id):
     }
 
 
-def train_regime_model(all_trades):
-    """Train GradientBoosting classifier for regime prediction."""
-    combined = []
-    for trades in all_trades.values():
-        combined.extend(trades)
-    if len(combined) < 50:
-        print("Warning: Not enough trades ({} < 50)".format(len(combined)))
-        return None
-
-    features = build_trade_features(combined)
-    base_regimes, sub_regimes = classify_trade_regimes(combined)
-
-    if len(features) != len(base_regimes):
-        print("Warning: Feature/label mismatch")
-        return None
-
-    unique = np.unique(base_regimes)
-    parts = []
-    for u in unique:
-        parts.append("{}={}".format(REGIME_NAMES.get(u, str(u)), int(np.sum(base_regimes == u))))
-    print("Base regime distribution: " + ", ".join(parts))
-
-    sub_unique = np.unique(sub_regimes)
-    sub_parts = []
-    for u in sub_unique:
-        sub_parts.append("{}={}".format(SUB_REGIME_NAMES.get(u, str(u)), int(np.sum(sub_regimes == u))))
-    print("Sub-regime distribution: " + ", ".join(sub_parts))
-
-    if len(unique) < 2:
-        print("Warning: Only 1 regime class - need more diverse data")
-        return None
-
-    try:
-        from sklearn.ensemble import GradientBoostingClassifier
-        from sklearn.model_selection import cross_val_score
-        model = GradientBoostingClassifier(
-            n_estimators=200, max_depth=5, learning_rate=0.05,
-            subsample=0.8, random_state=42)
-        model.fit(features, base_regimes)
-        if len(features) >= 50:
-            n_splits = min(5, len(unique))
-            cv = cross_val_score(model, features, base_regimes, cv=n_splits, scoring="accuracy")
-            print("Regime model CV accuracy: {:.3f} +/- {:.3f}".format(cv.mean(), cv.std()))
-        fi = model.feature_importances_
-        feat_names = ["hour", "weekday", "is_short", "leverage"]
-        top = sorted(zip(feat_names, fi), key=lambda x: -x[1])[:5]
-        print("Top features: " + ", ".join("{}={:.3f}".format(n, v) for n, v in top))
-        return model
-    except ImportError:
-        print("Warning: sklearn not available")
-        return None
-    except Exception as e:
-        print("Warning: Regime model error: " + str(e))
-        return None
-
-
 def save_performance_history(strat_trades, perf_feedback):
     """Save rolling performance history for feedback loop."""
     history = {}
@@ -929,27 +884,17 @@ def main():
         json.dump(best_params, f, indent=2)
     print("\nBest params saved: " + str(BEST_PARAMS_PATH))
 
-    # 9. Train regime model
-    print("\n" + "-" * 70)
-    print("REGIME CLASSIFIER TRAINING")
-    print("-" * 70)
-    model = train_regime_model(strat_trades)
-    if model is not None:
-        with open(REGIME_MODEL_PATH, "wb") as f:
-            pickle.dump(model, f)
-        print("Regime model saved: " + str(REGIME_MODEL_PATH))
-
-    # 10. Save performance history
+    # 9. Save performance history (informational, not used by live strategy)
     save_performance_history(strat_trades, perf_feedback)
 
-    # 11. Log
+    # 10. Log
     save_training_log(global_scores, best_params, total, regime_scores)
 
     # ═══════════════════════════════════════════════════════
     #  PRO QUANT ANALYSIS
     # ═══════════════════════════════════════════════════════
 
-    # 12. MFE/MAE Analysis
+    # 11. MFE/MAE Analysis
     print("\n" + "-" * 70)
     print("PRO: MFE/MAE EXCURSION ANALYSIS")
     print("-" * 70)
@@ -978,7 +923,7 @@ def main():
                   mfe["recommended_tp"],
                   mfe["trail_start"]))
 
-    # 13. Kelly Criterion
+    # 12. Kelly Criterion
     print("\n" + "-" * 70)
     print("PRO: KELLY CRITERION POSITION SIZING")
     print("-" * 70)
@@ -994,7 +939,7 @@ def main():
                   sname, kelly, edge["net_edge"],
                   edge["edge_ratio"], emoji))
 
-    # 14. Walk-Forward Validation
+    # 13. Walk-Forward Validation
     print("\n" + "-" * 70)
     print("PRO: WALK-FORWARD OUT-OF-SAMPLE VALIDATION")
     print("-" * 70)
@@ -1016,7 +961,7 @@ def main():
         print("    Overfit={:.1f}x  Robustness={:.0%}".format(
             wf["overfit_ratio"], wf["robustness"]))
 
-    # 15. Monte Carlo Simulation
+    # 14. Monte Carlo Simulation
     print("\n" + "-" * 70)
     print("PRO: MONTE CARLO SIMULATION (5K sims, $1000 initial)")
     print("-" * 70)
@@ -1036,7 +981,7 @@ def main():
         print("    P(profit)={:.0%}  P(ruin)={:.1%}".format(
             mc["prob_profit"], mc["prob_ruin"]))
 
-    # 16. Equity Curve & Discipline
+    # 15. Equity Curve & Discipline
     print("\n" + "-" * 70)
     print("PRO: EQUITY CURVE & DISCIPLINE PARAMETERS")
     print("-" * 70)
@@ -1059,7 +1004,7 @@ def main():
                   eq["recommended_cooldown"],
                   eq["recommended_daily_limit"]))
 
-    # 17. Train Trade Quality Model
+    # 16. Train Trade Quality Model
     print("\n" + "-" * 70)
     print("PRO: TRADE QUALITY MODEL")
     print("-" * 70)
@@ -1076,6 +1021,17 @@ def main():
                  "thresholds": q_thresh}, f
             )
         print("  Quality model saved: {}".format(QUALITY_MODEL_PATH))
+        feat_names = [
+            "hour", "weekday", "is_short", "regime", "leverage",
+        ]
+        fi = q_model.feature_importances_
+        top = sorted(
+            zip(feat_names, fi), key=lambda x: -x[1]
+        )
+        print("  Features ({}): {}".format(
+            len(feat_names),
+            ", ".join("{}={:.3f}".format(n, v) for n, v in top),
+        ))
         print("  Min quality threshold: {:.2%}".format(
             q_thresh["min_quality"]))
         print("  P25={:.2%} P50={:.2%} P75={:.2%}".format(
@@ -1083,7 +1039,7 @@ def main():
     else:
         print("  (insufficient data for quality model)")
 
-    # 18. Save discipline params
+    # 17. Save discipline params
     discipline = {
         "round_trip_fee": ROUND_TRIP_FEE,
         "min_edge_multiplier": MIN_EDGE_MULTIPLIER,
@@ -1100,7 +1056,7 @@ def main():
         json.dump(discipline, f, indent=2)
     print("\nDiscipline params saved: {}".format(DISCIPLINE_PATH))
 
-    # 19. NEW: Learn From Mistakes — Anti-Pattern Detection
+    # 18. Learn From Mistakes — Anti-Pattern Detection
     print("\n" + "-" * 70)
     print("PRO v4: LEARN FROM MISTAKES (Anti-Pattern Analysis)")
     print("-" * 70)
@@ -1137,7 +1093,7 @@ def main():
     except Exception as e:
         print("Warning: Could not save anti-patterns: " + str(e))
 
-    # 20. Register model version in registry
+    # 19. Register model version in registry
     print("\n" + "-" * 70)
     print("MODEL REGISTRY — VERSION TRACKING")
     print("-" * 70)

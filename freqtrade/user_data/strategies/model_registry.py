@@ -38,7 +38,6 @@ class ModelRegistry:
     INFO_FILES = [
         "training_log.json",
         "performance_history.json",
-        "regime_model.pkl",  # trained but unused
     ]
 
     def __init__(self, model_dir=None):
