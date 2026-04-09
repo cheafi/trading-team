@@ -8,6 +8,7 @@ Usage:
   # or inside Docker:
   docker compose exec freqtrade python /freqtrade/scripts/validate_pairs.py
 """
+
 import json
 import sys
 from pathlib import Path
