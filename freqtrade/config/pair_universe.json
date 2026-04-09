@@ -1,0 +1,23 @@
+{
+  "_version": "2025-07-20",
+  "_description": "Canonical pair universe — single source of truth. All configs MUST match this list.",
+  "_selection_criteria": "Top-6 USDT futures by volume + liquidity, tradeable on Binance Futures",
+  "pairs": [
+    "ETH/USDT:USDT",
+    "BTC/USDT:USDT",
+    "SOL/USDT:USDT",
+    "BNB/USDT:USDT",
+    "XRP/USDT:USDT",
+    "DOGE/USDT:USDT"
+  ],
+  "pair_blacklist": [
+    ".*USDC.*",
+    ".*BUSD.*",
+    ".*TUSD.*",
+    ".*FDUSD.*",
+    ".*DAI/.*",
+    ".*(UP|DOWN)/USDT.*",
+    ".*(BULL|BEAR)/USDT.*",
+    ".*1000(SATS|RATS|BONK|PEPE|FLOKI|SHIB)/.*"
+  ]
+}

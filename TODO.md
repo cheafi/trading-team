@@ -189,10 +189,10 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Split coordinator.mjs → ft-client.mjs, job-manager.mjs (notifier.mjs, router.mjs deferred)
 - [x] Split ml_optimizer.py → ml_scorer.py, ml_analyzer.py (trainer/registry deferred)
 - [x] CI pipeline: strategy-gate.yml (lookahead + smoke backtest on PRs)
-- [ ] Activate ml_optimizer imports (remove inline fallback definitions)
+- [x] Activate ml_optimizer imports (removed 947 lines inline fallback; 2100→1149 lines)
 - [ ] Introduce proper job queue (Bull/BullMQ) + durable DB (Postgres or SQLite)
-- [ ] Freeze pair universe for research; make universe changes explicit and versioned
-- [ ] Canonical research config vs live config with explicit diff
+- [x] Freeze pair universe: pair_universe.json + validate_pairs.py + startup check
+- [x] Canonical config diff: diff-configs.sh + config_reference.json snapshot
 
 ### Phase 3: Intelligence That Deserves the Name (Days 61–90)
 - [ ] Model registry: training window, feature hash, OOS metrics, drift status, rollback

@@ -4,6 +4,9 @@
  * Extracted from coordinator.mjs (Phase 2 architecture split).
  * All FT API calls go through this module.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import pino from "pino";
 
 const log = pino({
@@ -47,6 +50,42 @@ export async function ftApi(endpoint, method = "GET", body = null) {
 }
 
 /**
+ * Validate FT pair_whitelist matches canonical pair_universe.json.
+ * Logs warnings on mismatch but does not halt startup.
+ */
+function validatePairUniverse(showConfig) {
+  try {
+    // Resolve pair_universe.json relative to this module
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const universeFile = join(
+      __dirname,
+      "..",
+      "freqtrade",
+      "config",
+      "pair_universe.json",
+    );
+    const universe = JSON.parse(readFileSync(universeFile, "utf-8"));
+    const canonical = [...universe.pairs].sort();
+    const live = [...(showConfig?.exchange?.pair_whitelist || [])].sort();
+
+    if (JSON.stringify(canonical) === JSON.stringify(live)) {
+      log.info(
+        `✅ Pair universe OK: ${canonical.length} pairs (v${universe._version || "?"})`,
+      );
+    } else {
+      const missing = canonical.filter((p) => !live.includes(p));
+      const extra = live.filter((p) => !canonical.includes(p));
+      log.warn(
+        { missing, extra },
+        "⚠️  Pair whitelist does NOT match pair_universe.json!",
+      );
+    }
+  } catch (err) {
+    log.warn({ err: err.message }, "Could not validate pair universe");
+  }
+}
+
+/**
  * Startup self-test: verify FT API reachable + log config summary.
  * @returns {boolean} true if FT API is reachable
  */
@@ -85,6 +124,9 @@ export async function selfTestFT() {
       if (show.max_open_trades)
         checks.push(`max_trades=${show.max_open_trades}`);
       log.info(`✅ FT config: ${checks.join(", ")}`);
+
+      // Pair universe validation
+      validatePairUniverse(show);
     }
   } catch (err) {
     log.warn({ err }, "Could not verify FT config parity");

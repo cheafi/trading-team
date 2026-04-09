@@ -1,0 +1,61 @@
+{
+  "_snapshot_date": "2026-04-09T10:54:19Z",
+  "_source": "config.json",
+  "trading_mode": "futures",
+  "margin_mode": "isolated",
+  "max_open_trades": 4,
+  "stake_currency": "USDT",
+  "stake_amount": 200,
+  "dry_run": true,
+  "exchange": {
+    "pair_whitelist": [
+      "ETH/USDT:USDT",
+      "BTC/USDT:USDT",
+      "SOL/USDT:USDT",
+      "BNB/USDT:USDT",
+      "XRP/USDT:USDT",
+      "DOGE/USDT:USDT"
+    ],
+    "pair_blacklist": [
+      ".*USDC.*",
+      ".*BUSD.*",
+      ".*TUSD.*",
+      ".*FDUSD.*",
+      ".*DAI/.*",
+      ".*(UP|DOWN)/USDT.*",
+      ".*(BULL|BEAR)/USDT.*",
+      ".*1000(SATS|RATS|BONK|PEPE|FLOKI|SHIB)/.*"
+    ]
+  },
+  "pairlists": [
+    {
+      "method": "StaticPairList"
+    },
+    {
+      "method": "AgeFilter",
+      "min_days_listed": 30
+    },
+    {
+      "method": "SpreadFilter",
+      "max_spread_ratio": 0.005
+    }
+  ],
+  "timeframe": "5m",
+  "startup_candle_count": 200,
+  "order_types": {
+    "entry": "limit",
+    "exit": "limit",
+    "stoploss": "market",
+    "stoploss_on_exchange": true
+  },
+  "entry_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+  "exit_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1
+  }
+}
