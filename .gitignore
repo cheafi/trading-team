@@ -22,3 +22,10 @@ dashboard/node_modules/
 agents/node_modules/
 dashboard/.next/
 *.bak
+*.old
+
+# Trunk linter
+.trunk/
+
+# Runtime data
+freqtrade/user_data/ml_models/rejection_journal.json

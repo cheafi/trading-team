@@ -49,9 +49,9 @@
     "enabled": false,
     "listen_ip_address": "127.0.0.1",
     "listen_port": 8081,
-    "jwt_secret_key": "changeme-jwt-secret-key-trading-team",
-    "username": "freqtrader",
-    "password": "SuperSecure123"
+    "jwt_secret_key": "__overridden_by_env__",
+    "username": "__overridden_by_env__",
+    "password": "__overridden_by_env__"
   },
 
   "timeframe": "5m",

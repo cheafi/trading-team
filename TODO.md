@@ -24,7 +24,28 @@
 
 ---
 
-## Backtest Results (Jan 1 – Mar 29, 2026)
+## Backtest Results
+
+### 3-Year Backtest (Jan 2023 – Dec 2025, 6 pairs)
+
+| Strategy | Trades | Avg P/L% | Tot P/L USDT | Win% | Max DD | Profit Factor | Sharpe |
+|----------|--------|----------|-------------|------|--------|---------------|--------|
+| A52Strategy | 27,313 | -0.10 | -2,604 | 46.7% | 26.05% | 0.73 | -68.41 |
+| OPTStrategy | 23,629 | -0.10 | -3,026 | 57.5% | 30.55% | 0.75 | -52.17 |
+| A51Strategy | 2,356 | -0.10 | -170 | 52.0% | 1.70% | 0.60 | -9.32 |
+| A31Strategy | 4,333 | -0.15 | -1,016 | 35.1% | 10.17% | 0.54 | -20.28 |
+| AdaptiveMLStrategy | 13 | -0.13 | -0.33 | 38.5% | 0.01% | 0.48 | -0.08 |
+
+**Honest assessment:**
+- All 5 strategies are net negative over 3 years — **no edge found yet**.
+- AdaptiveMLStrategy's quality gate + anti-pattern filter correctly blocks most bad trades (only 13 entries), but the 13 it allows still lose.
+- A52 and OPT generate massive trade volume (23K-27K) but bleed slowly (-0.10% avg).
+- A51 is the most capital-preserving (-1.7% DD) but still negative.
+- A31 has worst win rate (35.1%) — squeeze breakout doesn't work in ranging regime.
+- OPT has best win rate (57.5%) but worst drawdown (30.55%) — wins too small vs losses.
+- The meta-strategy (AdaptiveML) successfully protects capital by being extremely selective, but has no positive edge to exploit.
+
+### Short-period Backtest (Jan 1 – Mar 29, 2026)
 
 | Strategy | Trades | P/L | Drawdown | Market |
 |----------|--------|-----|----------|--------|
@@ -112,6 +133,25 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Fixed ml-train.sh: backtests now use config_backtest.json (StaticPairList)
 - [x] Fixed runMarketAnalyst: removed hardcoded ETH pair, uses actual open trades
 - [x] Fixed best_params.json R2 direction_bias: "long" → "short" (matches strategy)
+
+### Iteration 7 — 6-Pair Expansion & Discord UX
+- [x] Expanded from ETH-only to 6 pairs (ETH, BTC, SOL, BNB, XRP, DOGE)
+- [x] Downloaded 5-year data (2021–2025) for all pairs × 3 timeframes
+- [x] Discord bot UX overhaul (color palette, brand helper, shortcuts)
+
+### Iteration 8 — Professional Review Fixes
+- [x] Fixed 4 stale GitHub URLs (docs/index.html, README.md)
+- [x] Fixed regime labeling leakage: symmetric → causal backward-only window
+- [x] Removed dead perf_history code from AdaptiveMLStrategy.py
+- [x] Verified rejection journal wiring (14 call sites → disk → API → dashboard)
+- [x] 3-year backtest suite: all 5 strategies × 6 pairs (A52/OPT/A51/A31/AdaptiveML)
+- [x] Freqtrade container memory bumped 2G→4G (5yr data was OOM-killing backtests)
+
+### Iteration 9 — Second Review: Truthfulness & Security Hardening
+- [x] Fixed ml-train.sh: download step now uses config_backtest.json (was config.json)
+- [x] Fixed Discord cmdStrategies(): replaced fabricated strategy table with real FT API per-pair data
+- [x] Removed hardcoded API secrets from config.json and config_backtest.json (env-override placeholders)
+- [x] Cleaned training_log.json: removed 1 placeholder entry with impossible metrics
 
 ---
 

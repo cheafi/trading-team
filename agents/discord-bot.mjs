@@ -556,34 +556,34 @@ function buildAgents(agents) {
 async function cmdStrategies(msg) {
   const data = await api("/api/strategies");
   const p = data?.profit;
-  const strats = [
-    { k: "AdaptiveML", c: 0.5, e: 0.0 },
-    { k: "A52", c: 0.5, e: -0.18 },
-    { k: "OPT", c: 0.65, e: 0.05 },
-    { k: "A51", c: 0.35, e: 0.0 },
-    { k: "A31", c: 0.8, e: -0.1 },
-  ];
-  const wr = getWR(p),
-    dd = getDDPct(p).toFixed(1);
-  const hdr = " #  Strategy         c      e     WR%    DD%";
-  const sep =
-    "\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500";
-  const medal = ["\ud83e\udd47", "\ud83e\udd48", "\ud83e\udd49", " 4", " 5"];
-  const rows = strats.map((s, i) => {
-    const n = s.k.padEnd(15);
-    const eStr = (s.e >= 0 ? "+" : "") + num(s.e);
-    return `${medal[i]}  ${n} ${pad(num(s.c), 5)} ${pad(eStr, 6)} ${pad(wr, 6)} ${pad(dd, 6)}`;
+  const perf = data?.performance || [];
+
+  // Show real per-pair performance from FT API (not fabricated strategy stats)
+  const hdr = " Pair          Trades   Profit    P/L%";
+  const sep = "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2500\u2500\u2500\u2500\u2500\u2500";
+  const rows = perf.slice(0, 8).map((pr) => {
+    const pair = stripPair(pr.pair).padEnd(14);
+    const cnt = String(pr.count || 0).padStart(6);
+    const pft = num(pr.profit || 0).padStart(8);
+    const pct = num(pr.profit_pct || 0).padStart(6);
+    return `${pair} ${cnt} ${pft} ${pct}`;
   });
+  if (!rows.length) rows.push(" No completed trades yet");
+
   const e = new EmbedBuilder()
     .setColor(C.gold)
-    .setTitle("\ud83d\udcca Strategy Ranking")
-    .setDescription(`\`\`\`\n${hdr}\n${sep}\n${rows.join("\n")}\n\`\`\``)
+    .setTitle("\ud83d\udcca  Strategy Performance")
+    .setDescription([
+      "**Active:** AdaptiveMLStrategy (R2 short-only via A52)",
+      "",
+      `\`\`\`\n${hdr}\n${sep}\n${rows.join("\n")}\n\`\`\``,
+    ].join("\n"))
     .addFields(
-      { name: "Win Rate", value: `\`${wr}%\``, inline: true },
+      { name: "Win Rate", value: `\`${getWR(p)}%\``, inline: true },
       { name: "Profit Factor", value: `\`${getPF(p)}\``, inline: true },
       { name: "Sharpe", value: `\`${num(p?.sharpe)}\``, inline: true },
-    )
-  brand(e, "Only A52 (R2 short) is active in production");
+    );
+  brand(e, "Only A52 (R2 short) is active \u2022 all data from Freqtrade API");
   await msg.reply({ embeds: [e] });
 }
 

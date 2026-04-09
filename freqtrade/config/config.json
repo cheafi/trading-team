@@ -71,10 +71,10 @@
     "listen_port": 8080,
     "verbosity": "error",
     "enable_openapi": true,
-    "jwt_secret_key": "changeme-jwt-secret-key-trading-team",
+    "jwt_secret_key": "__overridden_by_FREQTRADE__API_SERVER__JWT_SECRET_KEY_env__",
     "CORS_origins": ["http://localhost:3000"],
-    "username": "freqtrader",
-    "password": "SuperSecure123"
+    "username": "__overridden_by_FREQTRADE__API_SERVER__USERNAME_env__",
+    "password": "__overridden_by_FREQTRADE__API_SERVER__PASSWORD_env__"
   },
 
   "timeframe": "5m",
