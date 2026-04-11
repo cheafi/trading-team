@@ -11,6 +11,8 @@ import { EquityMini } from "@/components/EquityMini";
 import { DiagnosticsPanel } from "@/components/DiagnosticsPanel";
 import { RiskCockpit } from "@/components/RiskCockpit";
 import { BenchmarkPanel } from "@/components/BenchmarkPanel";
+import { BacktestPanel } from "@/components/BacktestPanel";
+import { TradeHistory } from "@/components/TradeHistory";
 
 export default function Home() {
   return (
@@ -31,12 +33,43 @@ export default function Home() {
         <PairPerformance />
       </div>
 
+      {/* Trade History (closed trades) */}
+      <section className="mb-6">
+        <TradeHistory />
+      </section>
+
+      {/* Benchmark Centre: strategy vs benchmarks, risk-adjusted metrics */}
+      <section className="mb-6">
+        <BenchmarkPanel />
+      </section>
+
+      {/* Backtest Lab: run backtests with custom time/TF/strategy */}
+      <section className="mb-6">
+        <BacktestPanel />
+      </section>
+
       {/* ML Adaptive Engine */}
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
           <span className="text-xl">🧠</span> ML Adaptive Engine
         </h2>
         <MLPanel />
+      </section>
+
+      {/* Diagnostics: rejection journal with breakdowns */}
+      <section className="mb-6">
+        <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
+          <span className="text-xl">🔍</span> Operator Diagnostics
+        </h2>
+        <DiagnosticsPanel />
+      </section>
+
+      {/* Risk Cockpit: exposure, drift, model versions, kill-switch */}
+      <section className="mb-6">
+        <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
+          <span className="text-xl">🛡️</span> Risk Cockpit
+        </h2>
+        <RiskCockpit />
       </section>
 
       {/* Agent cards */}
@@ -62,27 +95,6 @@ export default function Home() {
           <FindingsPanel />
         </section>
       </div>
-
-      {/* Diagnostics: rejection journal */}
-      <section className="mb-6">
-        <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-          <span className="text-xl">🔍</span> Operator Diagnostics
-        </h2>
-        <DiagnosticsPanel />
-      </section>
-
-      {/* Risk Cockpit: exposure, drift, model versions, kill-switch */}
-      <section className="mb-6">
-        <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-          <span className="text-xl">🛡️</span> Risk Cockpit
-        </h2>
-        <RiskCockpit />
-      </section>
-
-      {/* Benchmark Centre: strategy vs benchmarks, risk-adjusted metrics */}
-      <section className="mb-6">
-        <BenchmarkPanel />
-      </section>
     </main>
   );
 }

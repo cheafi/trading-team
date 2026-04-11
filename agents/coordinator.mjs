@@ -889,15 +889,18 @@ const server = createServer(async (req, res) => {
     // ─── Backtest API ────────────────────────────────────────
     // Run backtest (requires API key)
     if (url.pathname === "/api/backtest/run" && req.method === "POST") {
-      if (!checkAuth(req)) {
+      if (!isAuthed) {
         res.writeHead(403);
         res.end(JSON.stringify({ error: "Forbidden: invalid API key" }));
         return;
       }
       let body = "";
       for await (const chunk of req) body += chunk;
-      const { strategy, timerange } = JSON.parse(body || "{}");
+      const { strategy, timerange, timeframe } = JSON.parse(body || "{}");
       const tr = timerange || getDefaultTimerange();
+      const tf = ["1m", "5m", "15m", "1h", "4h", "1d"].includes(timeframe)
+        ? timeframe
+        : "5m";
       const strats =
         !strategy || strategy === "all"
           ? [
@@ -909,14 +912,14 @@ const server = createServer(async (req, res) => {
             ]
           : [strategy];
 
-      log.info({ strategies: strats, timerange: tr }, "Backtest triggered");
+      log.info({ strategies: strats, timerange: tr, timeframe: tf }, "Backtest triggered");
       discord.sendAlert(
         "info",
-        `🏃 Backtest started: ${strats.join(", ")} | Range: ${tr}`,
+        `🏃 Backtest started: ${strats.join(", ")} | ${tf} | Range: ${tr}`,
       );
 
       // Run backtests in background (delegated to job-manager)
-      runBacktests(strats, tr, redis, discord).catch((err) => {
+      runBacktests(strats, tr, redis, discord, tf).catch((err) => {
         log.error({ err }, "Backtest pipeline failed");
         discord.sendAlert("critical", `❌ Backtest failed: ${err.message}`);
       });
@@ -927,6 +930,7 @@ const server = createServer(async (req, res) => {
           status: "backtest-started",
           strategies: strats,
           timerange: tr,
+          timeframe: tf,
         }),
       );
       return;

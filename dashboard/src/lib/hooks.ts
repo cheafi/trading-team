@@ -371,3 +371,69 @@ export async function toggleKillSwitch(active: boolean, reason?: string): Promis
   });
   return res.json();
 }
+
+// ─── Backtest Control ────────────────────────────────────
+
+export interface BacktestResult {
+  strategy: string;
+  timerange: string;
+  timeframe?: string;
+  profit: number;
+  winRate: number;
+  maxDrawdown: number;
+  totalTrades: number;
+  sharpe: number;
+  timestamp: string;
+  error?: string;
+}
+
+export function useBacktestResults() {
+  return useSWR<BacktestResult[]>("/api/backtest/results", fetcher, {
+    refreshInterval: 5000,
+    fallbackData: [],
+  });
+}
+
+export async function triggerBacktest(params: {
+  strategy?: string;
+  timerange?: string;
+  timeframe?: string;
+}): Promise<{ status: string; strategies?: string[]; timerange?: string; timeframe?: string; error?: string }> {
+  const res = await fetch("/api/backtest/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return res.json();
+}
+
+// ─── Trade History (closed trades) ───────────────────────
+
+export interface ClosedTrade {
+  trade_id: number;
+  pair: string;
+  is_short: boolean;
+  open_date: string;
+  close_date: string;
+  profit_pct: number;
+  profit_abs: number;
+  open_rate: number;
+  close_rate: number;
+  stake_amount: number;
+  exit_reason: string;
+  enter_tag: string;
+  timeframe: string;
+  min_rate: number;
+  max_rate: number;
+  close_profit: number;
+}
+
+export function useTradeHistory(limit = 50) {
+  return useSWR<{ trades: ClosedTrade[]; trades_count: number }>(
+    `/api/ft/trades?limit=${limit}`,
+    fetcher,
+    {
+      refreshInterval: 15000,
+    }
+  );
+}

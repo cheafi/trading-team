@@ -258,12 +258,16 @@ export async function downloadData(pairs, timeframes, timerange, discord) {
  * @param {string} timerange
  * @param {import("ioredis").default} redis
  * @param {object} discord
+ * @param {string} [timeframe="5m"]
  */
-export async function runBacktests(strategies, timerange, redis, discord) {
+export async function runBacktests(strategies, timerange, redis, discord, timeframe = "5m") {
   const results = [];
+  const safeTf = ["1m", "5m", "15m", "1h", "4h", "1d"].includes(timeframe)
+    ? timeframe
+    : "5m";
 
   for (const strategy of strategies) {
-    log.info({ strategy, timerange }, "Running backtest...");
+    log.info({ strategy, timerange, timeframe: safeTf }, "Running backtest...");
 
     try {
       const safeStrategy = strategy.replace(/[^a-zA-Z0-9_]/g, "");
@@ -286,7 +290,7 @@ export async function runBacktests(strategies, timerange, redis, discord) {
           "--timerange",
           safeTimerange,
           "--timeframe",
-          "5m",
+          safeTf,
           "--enable-protections",
           "--export",
           "trades",
@@ -308,6 +312,7 @@ export async function runBacktests(strategies, timerange, redis, discord) {
       });
 
       const result = parseBacktestOutput(output, strategy, timerange);
+      result.timeframe = safeTf;
       results.push(result);
 
       await redis.lpush("trading:backtest:results", JSON.stringify(result));
