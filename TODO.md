@@ -231,6 +231,28 @@ capital preservation is working (0.01% DD vs -25% market).
 - [x] Wired auto-learn into backtester agent: checks params age, triggers download→backtest→retrain if >7d
 - [x] Fixed auto-learn.sh branding (DanDan → CC)
 
+### Iteration 17 — Professional Review Response: Deterministic Risk + Benchmark
+Responding to comprehensive professional review that identified 8 critical modules and a Phase 4 roadmap.
+
+**Gap audit results (8 modules):**
+| Module | Status | Key Gap |
+|--------|--------|---------|
+| Decision Journal | 55% | Missing counterfactual tracking |
+| Model Registry | 50% | No feature hash / training windows |
+| Shadow Mode | 40% | Only quality model, no full signals |
+| Trade Replay | 35% | No funding/OI/events/slippage |
+| Risk Cockpit | 45% → 75% | Added kill-switch toggle |
+| Benchmark Centre | 0% → 85% | NEW: Sharpe/Sortino/Calmar/PF/alpha |
+| Public/Operator split | 60% | Dashboard has no auth |
+| Telemetry | 2% | No OTel/correlation IDs |
+
+**Implemented in this iteration:**
+- [x] **Benchmark Centre** (P0): /api/benchmark endpoint — strategy return, Sharpe, Sortino, Calmar, profit factor, win rate, expectancy, per-pair breakdown, vs-cash alpha. BenchmarkPanel dashboard component with colour-coded metrics.
+- [x] **Kill-switch** (P1): file-based toggle at ml_models/kill_switch. Strategy reads at top of confirm_trade_entry (blocks all entries when active). /api/kill-switch GET/POST in coordinator. Dashboard toggle in RiskCockpit with live indicator.
+- [x] **Event freeze windows** (P1): Strategy reads ml_models/event_calendar.json. Blocks entries within ±3h of scheduled events. Seeded with 2026 FOMC (8 dates), CPI (12 dates), NFP (12 dates) — 32 events total.
+- [x] **Enhanced rejection journal** (P1): v3 adds `regime` and `direction_score` fields to every rejection entry, enabling per-regime analysis of blocked trades.
+- [x] Dashboard hooks: useBenchmark, useKillSwitch, toggleKillSwitch added to hooks.ts
+
 ---
 
 ## 90-Day Roadmap
@@ -265,6 +287,10 @@ capital preservation is working (0.01% DD vs -25% market).
 ### Post-Roadmap: Operational Hardening
 - [x] Stale params detection + auto-learn pipeline (backtester agent triggers full cycle)
 - [x] Anti-pattern safety guard (prevent toxic-hour over-blocking)
+- [x] Benchmark Centre: Sharpe/Sortino/Calmar/PF + per-pair breakdown + vs-cash alpha (API + dashboard)
+- [x] Kill-switch: file-based toggle, API endpoint, dashboard UI with 1-click activate/deactivate
+- [x] Event freeze windows: auto-block entries ±3h around FOMC/CPI/NFP (2026 calendar seeded)
+- [x] Enhanced rejection journal: v3 adds regime + direction_score per rejection
 - [ ] Move to Discord slash commands (not prefix-message)
 - [ ] Role-based permissions for train/backtest/pause
 - [ ] OpenTelemetry: traces, metrics, logs across all services
@@ -272,6 +298,10 @@ capital preservation is working (0.01% DD vs -25% market).
 - [ ] Validate R0/R1/R3 edges before re-enabling
 - [ ] Full indicator features in quality model (ADX, ATR, BB_width, vol_ratio)
 - [ ] Introduce proper job queue (Bull/BullMQ) + durable DB (Postgres or SQLite)
+- [ ] Dashboard auth: operator pages behind login, public pages read-only
+- [ ] On-chain / whale tracking layer
+- [ ] Macro regime engine (DXY, yields, gold/copper ratios)
+- [ ] Data quality layer (venue health scores, stale feed detection)
 
 ### Deferred
 - [x] ~~Wire regime model into live decisions (or remove training code)~~ Removed dead regime model

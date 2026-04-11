@@ -10,6 +10,7 @@ import { PairPerformance } from "@/components/PairPerformance";
 import { EquityMini } from "@/components/EquityMini";
 import { DiagnosticsPanel } from "@/components/DiagnosticsPanel";
 import { RiskCockpit } from "@/components/RiskCockpit";
+import { BenchmarkPanel } from "@/components/BenchmarkPanel";
 
 export default function Home() {
   return (
@@ -70,12 +71,17 @@ export default function Home() {
         <DiagnosticsPanel />
       </section>
 
-      {/* Risk Cockpit: exposure, drift, model versions */}
+      {/* Risk Cockpit: exposure, drift, model versions, kill-switch */}
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
           <span className="text-xl">🛡️</span> Risk Cockpit
         </h2>
         <RiskCockpit />
+      </section>
+
+      {/* Benchmark Centre: strategy vs benchmarks, risk-adjusted metrics */}
+      <section className="mb-6">
+        <BenchmarkPanel />
       </section>
     </main>
   );

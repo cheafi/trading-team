@@ -322,3 +322,52 @@ export function useShadowComparison() {
     },
   });
 }
+
+// ─── Benchmark Centre ────────────────────────────────────
+
+export interface BenchmarkData {
+  strategy_return_pct: number;
+  trading_days: number;
+  sharpe: number;
+  sortino: number;
+  calmar: number;
+  max_drawdown_pct: string;
+  profit_factor: number;
+  win_rate: number;
+  expectancy: number;
+  trade_count: number;
+  closed_trades: number;
+  benchmarks: Record<string, { return_pct: number; label: string }>;
+  pair_breakdown: Record<string, { trades: number; profit_pct: number }>;
+}
+
+export function useBenchmark() {
+  return useSWR<BenchmarkData>("/api/benchmark", fetcher, {
+    refreshInterval: 30000,
+  });
+}
+
+// ─── Kill Switch ─────────────────────────────────────────
+
+export interface KillSwitchData {
+  active: boolean;
+  activated_at?: string;
+  reason?: string;
+  source?: string;
+}
+
+export function useKillSwitch() {
+  return useSWR<KillSwitchData>("/api/kill-switch", fetcher, {
+    refreshInterval: 5000,
+    fallbackData: { active: false },
+  });
+}
+
+export async function toggleKillSwitch(active: boolean, reason?: string): Promise<KillSwitchData> {
+  const res = await fetch("/api/kill-switch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ active, reason }),
+  });
+  return res.json();
+}

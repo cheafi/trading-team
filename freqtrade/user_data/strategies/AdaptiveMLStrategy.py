@@ -72,6 +72,15 @@ REJECTION_LOG_PATH = MODEL_DIR / "rejection_journal.json"
 # Trade replay — per-trade entry/exit with full context
 TRADE_REPLAY_PATH = MODEL_DIR / "trade_replay.json"
 
+# Kill-switch: if this file exists, block ALL entries
+KILL_SWITCH_PATH = MODEL_DIR / "kill_switch"
+
+# Event freeze windows (UTC hours) — no trading around
+# scheduled macro events. Format: {(month, day): [(hour_start, hour_end), ...]}
+# Static list; for dynamic FOMC/CPI dates, update periodically.
+# These are UTC windows where entry is blocked.
+EVENT_FREEZE_HOURS = 3  # freeze for N hours around event
+
 # Fee structure
 ROUND_TRIP_FEE = 0.001  # 0.10% (Binance futures maker+taker)
 
@@ -820,9 +829,12 @@ class AdaptiveMLStrategy(IStrategy):
             # v2: model version (best_params load timestamp)
             "model_ts": self._last_model_load,
         }
-        # v2: feature snapshot (when dataframe row is available)
+        # v3: feature snapshot + regime + direction_score
         if features is not None:
-            entry["features"] = self._snap_features(features)
+            snap = self._snap_features(features)
+            entry["features"] = snap
+            entry["regime"] = snap.get("regime")
+            entry["direction_score"] = snap.get("direction_score")
 
         self._rejection_log.append(entry)
         if len(self._rejection_log) > self._MAX_REJECTIONS:
@@ -1002,10 +1014,37 @@ class AdaptiveMLStrategy(IStrategy):
         Every rejection is persisted so operators can see
         why the bot is not trading.
         """
+        # KILL SWITCH: if file exists, block all entries
+        if KILL_SWITCH_PATH.exists():
+            self._log_rejection(pair, side, "kill_switch_active", current_time)
+            return False
+
         # GUARD: Only trade futures pairs (must have :USDT suffix)
         if ":USDT" not in pair:
             self._log_rejection(pair, side, "not_futures_pair", current_time)
             return False
+
+        # EVENT FREEZE: block during scheduled macro events
+        if hasattr(current_time, "hour"):
+            event_file = MODEL_DIR / "event_calendar.json"
+            if event_file.exists():
+                try:
+                    with open(event_file, "r") as ef:
+                        events = json.load(ef)
+                    # events: [{"date": "2026-04-15", "hour": 14, "name": "CPI"}, ...]
+                    ct_str = str(current_time.date())
+                    for ev in events:
+                        if ev.get("date") == ct_str:
+                            ev_hour = ev.get("hour", 12)
+                            if abs(current_time.hour - ev_hour) <= EVENT_FREEZE_HOURS:
+                                self._log_rejection(
+                                    pair, side,
+                                    f"event_freeze_{ev.get('name', 'macro')}",
+                                    current_time,
+                                )
+                                return False
+                except Exception:
+                    pass
 
         # PRO: Reset daily counters
         if hasattr(current_time, "date"):

@@ -1194,6 +1194,123 @@ print('OK')
       return;
     }
 
+    // ─── Benchmark Centre API ───────────────────────────────────
+    if (url.pathname === "/api/benchmark") {
+      try {
+        const [profit, performance, balance] = await Promise.all([
+          ftApi("/profit"),
+          ftApi("/performance"),
+          ftApi("/balance"),
+        ]);
+
+        // Strategy returns
+        const stratReturn = profit?.profit_all_percent || 0;
+        const tradingDays = profit?.trading_volume
+          ? Math.max(1, Math.ceil((Date.now() - new Date(profit?.first_trade_timestamp || Date.now()).getTime()) / 86400000))
+          : 30;
+
+        // Compute annualised metrics
+        const annFactor = 365 / tradingDays;
+        const sharpe = profit?.sharpe || 0;
+        const sortino = profit?.sortino || 0;
+        const maxDD = profit?.max_drawdown || 0;
+        const calmar = maxDD > 0 ? (stratReturn * annFactor) / (maxDD * 100) : 0;
+
+        // Buy-and-hold benchmark (from performance endpoint)
+        const pairs = Array.isArray(performance) ? performance : [];
+        const pairBenchmarks = {};
+        for (const p of pairs) {
+          pairBenchmarks[p.pair] = {
+            trades: p.count,
+            profit_pct: p.profit,
+          };
+        }
+
+        // HODL comparison stub — in dry-run we can't get exact price history,
+        // so we report strategy vs zero (cash) as baseline
+        const benchmarks = {
+          cash: { return_pct: 0, label: "Cash (0%)" },
+          strategy: {
+            return_pct: stratReturn,
+            label: `CC R2 Short (${stratReturn.toFixed(2)}%)`,
+          },
+        };
+
+        res.writeHead(200);
+        res.end(JSON.stringify({
+          strategy_return_pct: stratReturn,
+          trading_days: tradingDays,
+          sharpe,
+          sortino,
+          calmar: parseFloat(calmar.toFixed(4)),
+          max_drawdown_pct: (maxDD * 100).toFixed(2),
+          profit_factor: profit?.profit_factor || 0,
+          win_rate: profit?.winrate || 0,
+          expectancy: profit?.expectancy || 0,
+          trade_count: profit?.trade_count || 0,
+          closed_trades: profit?.closed_trade_count || 0,
+          benchmarks,
+          pair_breakdown: pairBenchmarks,
+        }));
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: String(err.message || err) }));
+      }
+      return;
+    }
+
+    // ─── Kill-Switch API ─────────────────────────────────────────
+    if (url.pathname === "/api/kill-switch") {
+      const ksPath = "/freqtrade/user_data/ml_models/kill_switch";
+      const fs = await import("node:fs/promises");
+
+      if (req.method === "GET") {
+        try {
+          await fs.access(ksPath);
+          const content = await fs.readFile(ksPath, "utf8");
+          let info = {};
+          try { info = JSON.parse(content); } catch { info = { raw: content }; }
+          res.writeHead(200);
+          res.end(JSON.stringify({ active: true, ...info }));
+        } catch {
+          res.writeHead(200);
+          res.end(JSON.stringify({ active: false }));
+        }
+        return;
+      }
+
+      if (req.method === "POST") {
+        if (!isAuthed) {
+          res.writeHead(403);
+          res.end(JSON.stringify({ error: "API key required for kill-switch" }));
+          return;
+        }
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        let payload = {};
+        try { payload = JSON.parse(body); } catch { /* empty */ }
+
+        const activate = payload.active !== false; // default = activate
+        if (activate) {
+          const info = JSON.stringify({
+            activated_at: new Date().toISOString(),
+            reason: payload.reason || "operator_triggered",
+            source: "api",
+          });
+          await fs.writeFile(ksPath, info, "utf8");
+          log.warn("🛑 KILL SWITCH ACTIVATED via API");
+          res.writeHead(200);
+          res.end(JSON.stringify({ active: true, message: "Kill switch activated" }));
+        } else {
+          try { await fs.unlink(ksPath); } catch { /* already gone */ }
+          log.info("✅ Kill switch deactivated via API");
+          res.writeHead(200);
+          res.end(JSON.stringify({ active: false, message: "Kill switch deactivated" }));
+        }
+        return;
+      }
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: "Not found" }));
   } catch (err) {

@@ -1,6 +1,13 @@
 "use client";
 
-import { useRiskCockpit, useModelRegistry } from "@/lib/hooks";
+import { useState } from "react";
+import {
+  useRiskCockpit,
+  useModelRegistry,
+  useKillSwitch,
+  toggleKillSwitch,
+} from "@/lib/hooks";
+import { mutate } from "swr";
 
 function Stat({
   label,
@@ -29,6 +36,8 @@ function Stat({
 export function RiskCockpit() {
   const { data: risk, isLoading } = useRiskCockpit();
   const { data: registry } = useModelRegistry();
+  const { data: killSwitch } = useKillSwitch();
+  const [toggling, setToggling] = useState(false);
 
   if (isLoading || !risk) {
     return (
@@ -132,6 +141,65 @@ export function RiskCockpit() {
           </div>
         </div>
       )}
+
+      {/* Kill Switch */}
+      <div className="border-t border-slate-700 pt-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-xs text-slate-500 uppercase tracking-wide">
+              Kill Switch
+            </span>
+            <div className="flex items-center gap-2 mt-1">
+              <span
+                className={`inline-block w-3 h-3 rounded-full ${
+                  killSwitch?.active
+                    ? "bg-red-500 animate-pulse"
+                    : "bg-emerald-500"
+                }`}
+              />
+              <span
+                className={`text-sm font-mono ${
+                  killSwitch?.active ? "text-red-400" : "text-emerald-400"
+                }`}
+              >
+                {killSwitch?.active ? "🛑 ACTIVE — all entries blocked" : "✅ Off — trading normal"}
+              </span>
+            </div>
+            {killSwitch?.active && killSwitch.activated_at && (
+              <span className="text-xs text-slate-500">
+                Since {new Date(killSwitch.activated_at).toLocaleString()}
+                {killSwitch.reason ? ` — ${killSwitch.reason}` : ""}
+              </span>
+            )}
+          </div>
+          <button
+            disabled={toggling}
+            onClick={async () => {
+              setToggling(true);
+              try {
+                await toggleKillSwitch(
+                  !killSwitch?.active,
+                  killSwitch?.active ? undefined : "operator_dashboard",
+                );
+                mutate("/api/kill-switch");
+              } finally {
+                setToggling(false);
+              }
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              killSwitch?.active
+                ? "bg-emerald-700 hover:bg-emerald-600 text-white"
+                : "bg-red-700 hover:bg-red-600 text-white"
+            } ${toggling ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
+            {toggling
+              ? "..."
+              : killSwitch?.active
+                ? "Deactivate"
+                : "🛑 Activate Kill Switch"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
