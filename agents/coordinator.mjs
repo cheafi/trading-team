@@ -144,17 +144,68 @@ async function runQuantResearcher(agent) {
 }
 
 async function runBacktester(agent) {
-  log.info(`[${agent.id}] Checking backtest metrics...`);
+  log.info(`[${agent.id}] Checking data freshness + backtest metrics...`);
 
-  // Pull pair performance from the running bot
-  // Note: /performance returns per-pair stats, not per-strategy
-  const performance = await ftApi("/performance");
+  const fs = await import("node:fs/promises");
   const strategies = [
     "A52Strategy",
     "OPTStrategy",
     "A51Strategy",
     "A31Strategy",
   ];
+
+  // ── Data freshness check ──────────────────────────
+  // If best_params.json is older than 7 days, trigger
+  // download → backtest → retrain cycle automatically.
+  let paramsAgeDays = null;
+  let refreshTriggered = false;
+  const paramsPath = "/freqtrade/user_data/ml_models/best_params.json";
+
+  try {
+    const stat = await fs.stat(paramsPath);
+    paramsAgeDays = (Date.now() - stat.mtimeMs) / 86_400_000;
+  } catch {
+    paramsAgeDays = null; // file doesn't exist
+  }
+
+  if (paramsAgeDays === null || paramsAgeDays > 7) {
+    log.warn(
+      `[${agent.id}] ML params are ${paramsAgeDays === null ? "missing" : `${paramsAgeDays.toFixed(1)} days old`} — triggering auto-refresh`,
+    );
+    try {
+      // Step 1: Download fresh data (last 6 months)
+      const tr = getDefaultTimerange();
+      const pairs = [
+        "ETH/USDT:USDT",
+        "BTC/USDT:USDT",
+        "SOL/USDT:USDT",
+        "BNB/USDT:USDT",
+        "XRP/USDT:USDT",
+        "DOGE/USDT:USDT",
+      ];
+      const timeframes = ["5m", "15m", "1h"];
+      log.info(`[${agent.id}] Downloading data for ${tr}...`);
+      await downloadData(pairs, timeframes, tr, discord);
+
+      // Step 2: Run backtests for all strategies
+      log.info(`[${agent.id}] Running backtests...`);
+      await runBacktests(strategies, tr, redis, discord);
+
+      // Step 3: Trigger ML retrain
+      log.info(`[${agent.id}] Triggering ML retrain...`);
+      await startTrainingJob(redis, { timerange: tr });
+
+      refreshTriggered = true;
+      log.info(`[${agent.id}] Auto-refresh complete`);
+    } catch (err) {
+      log.error(
+        `[${agent.id}] Auto-refresh failed: ${err.message}`,
+      );
+    }
+  }
+
+  // ── Pull pair performance from the running bot ─────
+  const performance = await ftApi("/performance");
 
   const finding = {
     timestamp: new Date().toISOString(),
@@ -168,8 +219,12 @@ async function runBacktester(agent) {
           count: p.count,
         })) || [],
       monitoredStrategies: strategies,
+      paramsAgeDays: paramsAgeDays !== null ? +paramsAgeDays.toFixed(1) : null,
+      refreshTriggered,
     },
-    summary: `${strategies.length} strategies monitored | ${performance?.length || 0} pairs tracked`,
+    summary: refreshTriggered
+      ? `Auto-refresh triggered (params ${paramsAgeDays === null ? "missing" : paramsAgeDays.toFixed(0) + "d old"}) | ${performance?.length || 0} pairs`
+      : `Params ${paramsAgeDays !== null ? paramsAgeDays.toFixed(0) + "d old" : "missing"} | ${strategies.length} strategies | ${performance?.length || 0} pairs`,
   };
 
   agent.findings.unshift(finding);

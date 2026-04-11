@@ -49,6 +49,7 @@ backtest_results/*.json → ml_optimizer.py → ml_models/
 - Quality model uses `[hour, weekday, is_short, regime, leverage]` — a session-direction-regime prior, not deep trade intelligence.
 - Regime model has been REMOVED (was trained but never loaded by live strategy).
 - Training via API relearns from existing backtests — it does NOT download fresh data or run new backtests.
+- Backtester agent checks best_params.json age every 2h — triggers download→backtest→retrain if >7 days old.
 
 ## Critical Developer Workflows
 
@@ -91,14 +92,14 @@ curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit
 | signal-engineer | `*/5 * * * *` | Regime detection, entry signals |
 | quant-researcher | `*/15 * * * *` | Analyze trade P&L distribution |
 | market-analyst | `*/10 * * * *` | ETH volume + trend snapshot |
-| backtester | `0 */2 * * *` | Auto backtest on new data |
+| backtester | `0 */2 * * *` | Checks params freshness; if >7d old: download data → backtest → retrain |
 | ml-optimizer | `0 */2 * * *` | **State refresh only** — reads params, publishes to Redis. Does NOT retrain. |
 | security-auditor | `0 */6 * * *` | FT version, health, pair locks |
 
 ## Key Files
 
 - `freqtrade/user_data/strategies/AdaptiveMLStrategy.py` — live R2 short specialist
-- `freqtrade/user_data/strategies/ml_optimizer.py` — ML training pipeline (2083 lines)
+- `freqtrade/user_data/strategies/ml_optimizer.py` — ML training pipeline (1134 lines)
 - `freqtrade/user_data/ml_models/best_params.json` — hot-reloaded per-regime params
 - `agents/coordinator.mjs` — agent orchestrator + REST API (1150 lines)
 - `agents/discord-bot.mjs` — Discord integration

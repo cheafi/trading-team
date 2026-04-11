@@ -18,7 +18,7 @@ INTERVAL_HOURS="${1:-6}"
 INTERVAL_SECS=$((INTERVAL_HOURS * 3600))
 CYCLE=0
 
-echo "🔄 DanDan Continuous Learning Daemon"
+echo "🔄 CC Continuous Learning Daemon"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "⏰ Retrain interval: every ${INTERVAL_HOURS}h"
 echo "📊 Strategy: AdaptiveMLStrategy"

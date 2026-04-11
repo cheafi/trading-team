@@ -23,9 +23,11 @@ SL losses than ROI wins.
   13. Anti-martingale (reduce size on losses)
 
 Honest assessment:
-  - Quality model uses 3 features (hour, weekday, side) —
-    a session-direction prior, not deep trade intelligence.
-  - Regime model is trained but NOT used in live decisions.
+  - Quality model uses 5 features (hour, weekday, is_short,
+    regime, leverage) — a session-direction-regime prior,
+    not deep trade intelligence.
+  - Regime model was removed (iter 14). Regime detection
+    is rule-based (ADX/EMA/ATR/BB thresholds).
   - Only R2 short is active. The "adaptive" framing is
     aspirational, not current reality.
 
@@ -33,6 +35,7 @@ Philosophy: "Discipline is the bridge between goals and results."
 """
 
 import json
+import logging
 import pickle  # noqa: S301 — used for quality_model.pkl
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +49,8 @@ from freqtrade.strategy import (
     IStrategy,
 )
 from pandas import DataFrame
+
+logger = logging.getLogger(__name__)
 
 # Path where the ML optimizer writes trained models
 MODEL_DIR = Path("/freqtrade/user_data/ml_models")
@@ -163,6 +168,14 @@ class AdaptiveMLStrategy(IStrategy):
             try:
                 with open(BEST_PARAMS_PATH, "r") as f:
                     self._best_params = json.load(f)
+                # Staleness check: warn if params are > 7 days old
+                age_days = (now - BEST_PARAMS_PATH.stat().st_mtime) / 86400
+                if age_days > 7:
+                    logger.warning(
+                        "best_params.json is %.0f days old — consider retraining "
+                        "(./scripts/ml-train.sh or curl -X POST :3001/api/ml/train)",
+                        age_days,
+                    )
             except Exception:
                 self._best_params = None
 
@@ -1102,25 +1115,38 @@ class AdaptiveMLStrategy(IStrategy):
                         break
                 if ap:
                     toxic_hours = ap.get("toxic_hours", [])
-                    if current_time.hour in toxic_hours:
-                        self._log_rejection(
-                            pair,
-                            side,
-                            f"anti_pattern_hour_{current_time.hour}",
-                            current_time,
-                            features=last,
-                        )
-                        return False
                     toxic_days = ap.get("toxic_days", [])
-                    if current_time.weekday() in toxic_days:
-                        self._log_rejection(
-                            pair,
-                            side,
-                            f"anti_pattern_day_{current_time.weekday()}",
-                            current_time,
-                            features=last,
+
+                    # Safety: if >18 hours or >5 days are toxic, the
+                    # anti-pattern data is likely from a garbage strategy
+                    # assignment. Skip the filter to avoid silent blocking.
+                    if len(toxic_hours) > 18 or len(toxic_days) > 5:
+                        logger.warning(
+                            "Anti-pattern filter skipped: %s has %d toxic hours, "
+                            "%d toxic days — likely stale/bad data",
+                            strategy_name,
+                            len(toxic_hours),
+                            len(toxic_days),
                         )
-                        return False
+                    else:
+                        if current_time.hour in toxic_hours:
+                            self._log_rejection(
+                                pair,
+                                side,
+                                f"anti_pattern_hour_{current_time.hour}",
+                                current_time,
+                                features=last,
+                            )
+                            return False
+                        if current_time.weekday() in toxic_days:
+                            self._log_rejection(
+                                pair,
+                                side,
+                                f"anti_pattern_day_{current_time.weekday()}",
+                                current_time,
+                                features=last,
+                            )
+                            return False
             except Exception:
                 pass
 

@@ -19,8 +19,8 @@
 ### What the system does NOT do (yet)
 - Multi-regime live trading (R0/R1/R3 disabled)
 - Deep trade quality intelligence (model uses hour/weekday/side/regime/leverage — no candle indicators)
-- Auto-download fresh data + rebacktest + retrain pipeline
 - The scheduled "ML optimizer" agent refreshes state, does NOT retrain
+- Auto-learn is wired (backtester agent triggers download→backtest→retrain when params >7d old) but unproven in production
 
 ---
 
@@ -70,6 +70,16 @@
 
 The meta-strategy protects capital effectively during a -30% crash,
 but the edge is narrow and R2 is marked `is_robust: false`.
+
+### 2026 Q1 Backtest (Jan 1 – Apr 11, 2026, after iter 16 retrain)
+
+| Strategy | Trades | Avg P/L% | Tot P/L USDT | Win% | Max DD | Market |
+|----------|--------|----------|-------------|------|--------|--------|
+| AdaptiveMLStrategy | 37 | -0.15 | -0.611 | 43.2% | 0.01% | -25.12% |
+
+**Note:** After retraining (iter 16), R2 correctly uses A52. System is trading again.
+37 trades in ~100 days, 43.2% WR, negligible drawdown. Still net negative but
+capital preservation is working (0.01% DD vs -25% market).
 
 ---
 
@@ -210,6 +220,17 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] 5-year backtests: all 5 strategies completed (A51/A31/A52/OPT net negative; AdaptiveML 0 trades — ML gate blocks all)
 - [x] AdaptiveMLStrategy 5yr: 0 trades (quality model rejects everything — requires 10GB, ran via docker run)
 
+### Iteration 16 — Stale Params Fix + Auto-Learn Pipeline
+- [x] Diagnosed live zero-trade bug: best_params.json had R2=A31 (23/24 toxic hours → blocked everything)
+- [x] Retrained ML models: R2 now correctly uses A52 (no toxic hours)
+- [x] Hardened anti-pattern filter: skip if >18 toxic hours or >5 toxic days (prevents silent blocking)
+- [x] Added staleness warning: best_params.json >7 days logs warning on model load
+- [x] Added logging import + fixed stale docstring in AdaptiveMLStrategy.py
+- [x] Downloaded fresh 2026 data (Jan–Apr 2026, all 6 pairs × 3 TFs)
+- [x] 2026 Q1 validation backtest: 37 trades, 43.2% WR, 0.01% DD (system is trading again!)
+- [x] Wired auto-learn into backtester agent: checks params age, triggers download→backtest→retrain if >7d
+- [x] Fixed auto-learn.sh branding (DanDan → CC)
+
 ---
 
 ## 90-Day Roadmap
@@ -241,12 +262,17 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Risk cockpit: exposure, concentration, worst-case loss, drift warnings (dashboard)
 - [x] Public site: docs/index.html updated — regime model removed, quality model 5-feature, shadow mode, trade replay, model_registry
 
-### Deferred
+### Post-Roadmap: Operational Hardening
+- [x] Stale params detection + auto-learn pipeline (backtester agent triggers full cycle)
+- [x] Anti-pattern safety guard (prevent toxic-hour over-blocking)
 - [ ] Move to Discord slash commands (not prefix-message)
 - [ ] Role-based permissions for train/backtest/pause
 - [ ] OpenTelemetry: traces, metrics, logs across all services
-- [x] ~~Wire regime model into live decisions (or remove training code)~~ Removed dead regime model
 - [ ] Proper walk-forward: refit per slice + forward replay
 - [ ] Validate R0/R1/R3 edges before re-enabling
-- [ ] Full indicator features in quality model (ADX, ATR, BB_width, vol_ratio) — needs trade replay data accumulation
+- [ ] Full indicator features in quality model (ADX, ATR, BB_width, vol_ratio)
 - [ ] Introduce proper job queue (Bull/BullMQ) + durable DB (Postgres or SQLite)
+
+### Deferred
+- [x] ~~Wire regime model into live decisions (or remove training code)~~ Removed dead regime model
+- [x] ~~Auto-download fresh data + rebacktest + retrain~~ Wired into backtester agent (iter 16)
