@@ -57,6 +57,10 @@ QUALITY_MODEL_PATH = MODEL_DIR / "quality_model.pkl"
 DISCIPLINE_PATH = MODEL_DIR / "discipline_params.json"
 ANTI_PATTERN_PATH = MODEL_DIR / "anti_patterns.json"
 
+# Shadow model: evaluated but cannot trade — for A/B validation
+SHADOW_DIR = MODEL_DIR / "shadow"
+SHADOW_MODEL_PATH = SHADOW_DIR / "quality_model.pkl"
+
 # Decision journal — persists every trade rejection reason
 REJECTION_LOG_PATH = MODEL_DIR / "rejection_journal.json"
 
@@ -117,6 +121,7 @@ class AdaptiveMLStrategy(IStrategy):
     # Internal state - ML models
     _best_params = None
     _quality_model_data = None  # PRO: quality model
+    _shadow_model_data = None  # Shadow: candidate model (log-only)
     _discipline_params = None  # PRO: discipline params
     _anti_patterns = None  # PRO v4: learned anti-patterns
     _last_model_load = 0
@@ -184,6 +189,16 @@ class AdaptiveMLStrategy(IStrategy):
                     self._anti_patterns = json.load(f)
             except Exception:
                 self._anti_patterns = None
+
+        # Shadow model: loaded if present, never affects trading
+        if SHADOW_MODEL_PATH.exists():
+            try:
+                with open(SHADOW_MODEL_PATH, "rb") as f:
+                    self._shadow_model_data = pickle.load(f)
+            except Exception:
+                self._shadow_model_data = None
+        else:
+            self._shadow_model_data = None
 
     # ─── Regime Detection ────────────────────────────────
 
@@ -828,10 +843,12 @@ class AdaptiveMLStrategy(IStrategy):
         return snap
 
     def _log_trade_entry(self, pair, side, entry_tag, regime,
-                         rate, current_time, features_row):
+                         rate, current_time, features_row,
+                         shadow=None):
         """
         Trade Replay — log accepted entry with full context.
         Captures: features, risk state, model version, regime params.
+        Optional shadow dict logs candidate model's decision.
         """
         params = self._get_regime_params(regime)
         entry = {
@@ -856,8 +873,50 @@ class AdaptiveMLStrategy(IStrategy):
             },
             "model_ts": self._last_model_load,
         }
+        if shadow is not None:
+            entry["shadow"] = shadow
         self._trade_replay.append(entry)
         self._persist_replay()
+
+    def _evaluate_shadow(self, current_time, side, regime, kwargs):
+        """
+        Evaluate shadow (candidate) model — log-only, never trades.
+        Returns dict with shadow decision or None if no shadow model.
+        """
+        if self._shadow_model_data is None:
+            return None
+        try:
+            sm = self._shadow_model_data
+            model = sm.get("model")
+            scaler = sm.get("scaler")
+            thresholds = sm.get("thresholds", {})
+            if not model or not scaler:
+                return None
+            if not hasattr(current_time, "hour"):
+                return None
+
+            leverage = float(kwargs.get("leverage", 1) or 1)
+            features = np.array(
+                [[
+                    current_time.hour,
+                    current_time.weekday(),
+                    1 if side == "short" else 0,
+                    regime,
+                    leverage,
+                ]]
+            )
+            scaled = scaler.transform(features)
+            quality = float(
+                model.predict_proba(scaled)[0][1]
+            )
+            min_q = thresholds.get("min_quality", 0.5)
+            return {
+                "quality": round(quality, 4),
+                "threshold": min_q,
+                "would_allow": quality >= min_q,
+            }
+        except Exception:
+            return None
 
     def _log_trade_exit(self, pair, trade, exit_reason, profit,
                         rate, current_time):
@@ -1122,9 +1181,15 @@ class AdaptiveMLStrategy(IStrategy):
 
         self._daily_trades += 1
 
+        # Shadow model: evaluate candidate but NEVER block
+        shadow_decision = self._evaluate_shadow(
+            current_time, side, regime, kwargs,
+        )
+
         # Trade replay: log accepted entry with full context
         self._log_trade_entry(
             pair, side, entry_tag, regime, rate, current_time, last,
+            shadow=shadow_decision,
         )
         return True
 

@@ -1027,6 +1027,53 @@ print('OK')
       return;
     }
 
+    // ─── Shadow Model Comparison API ───────────────────────────
+    if (url.pathname === "/api/ml/shadow") {
+      try {
+        const fs = await import("node:fs/promises");
+        const raw = await fs.readFile(
+          "/freqtrade/user_data/ml_models/trade_replay.json",
+          "utf8",
+        );
+        const entries = JSON.parse(raw);
+        const all = Array.isArray(entries) ? entries : [];
+        const withShadow = all.filter(
+          (e) => e.event === "entry" && e.shadow,
+        );
+        const agrees = withShadow.filter(
+          (e) => e.shadow.would_allow === true,
+        ).length;
+        const disagrees = withShadow.filter(
+          (e) => e.shadow.would_allow === false,
+        ).length;
+        const total = withShadow.length;
+        const recent = withShadow.slice(-20).reverse();
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            total,
+            agrees,
+            disagrees,
+            agreement_rate:
+              total > 0 ? +(agrees / total).toFixed(4) : null,
+            recent,
+          }),
+        );
+      } catch {
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            total: 0,
+            agrees: 0,
+            disagrees: 0,
+            agreement_rate: null,
+            recent: [],
+          }),
+        );
+      }
+      return;
+    }
+
     // ─── Risk Cockpit API ──────────────────────────────────────
     if (url.pathname === "/api/risk/cockpit") {
       try {

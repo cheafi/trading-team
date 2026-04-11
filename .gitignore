@@ -9,6 +9,8 @@ freqtrade/user_data/backtest_results/
 freqtrade/user_data/ml_models/*.pkl
 freqtrade/user_data/ml_models/*.json
 freqtrade/user_data/ml_models/versions/
+freqtrade/user_data/ml_models/shadow/*.pkl
+freqtrade/user_data/ml_models/shadow/*.json
 # Keep model_registry.py tracked (it's in strategies/, not ml_models/)
 
 # OS files

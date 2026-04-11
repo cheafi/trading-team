@@ -11,14 +11,14 @@
 - Rule-based regime detection (ADX/EMA/ATR/BB thresholds)
 - Kelly-blended position sizing with anti-martingale
 - MFE-calibrated trailing stops
-- Quality model gate (3-feature session-direction prior)
+- Quality model gate (5-feature session-direction-regime prior)
 - Anti-pattern filter (toxic hours/days from loss analysis)
+- Shadow model infrastructure (candidate evaluation without trading)
 - Decision journal for all trade rejections
 
 ### What the system does NOT do (yet)
 - Multi-regime live trading (R0/R1/R3 disabled)
-- Real-time ML regime classification (trained model exists but unused)
-- Deep trade quality intelligence (model uses only hour/weekday/side)
+- Deep trade quality intelligence (model uses hour/weekday/side/regime/leverage — no candle indicators)
 - Auto-download fresh data + rebacktest + retrain pipeline
 - The scheduled "ML optimizer" agent refreshes state, does NOT retrain
 
@@ -68,8 +68,8 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 | R3 | VOLATILE | A52 (Momentum) | ⛔ Disabled |
 
 ### ML Pipeline (`ml_optimizer.py`)
-- Regime model — **GradientBoostingClassifier** (trained but not used live)
-- Quality model — **GradientBoostingClassifier** (3 features: hour, weekday, side)
+- Quality model — **GradientBoostingClassifier** (5 features: hour, weekday, side, regime, leverage)
+- Shadow model infrastructure — candidate models evaluated but cannot trade
 - Walk-forward validation (coarse robustness heuristic, not full replay)
 - Anti-pattern detection (toxic hours/days from loss analysis)
 - Kelly criterion position sizing
@@ -196,7 +196,7 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 ### Phase 3: Intelligence That Deserves the Name (Days 61–90)
 - [x] Model registry: version tracking, drift detection, rollback (model_registry.py)
 - [x] Quality model expanded: 3→5 features (hour, weekday, is_short, regime, leverage)
-- [ ] Shadow mode: candidate model makes decisions but cannot trade
+- [x] Shadow mode: candidate model evaluated but cannot trade (log-only A/B comparison)
 - [x] Trade replay: entry+exit logging with features, risk state, PnL attribution
 - [x] Risk cockpit: exposure, concentration, worst-case loss, drift warnings (dashboard)
 - [ ] Public site → clean docs/landing/trust layer; operator console → authenticated app

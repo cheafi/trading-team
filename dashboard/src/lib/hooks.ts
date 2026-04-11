@@ -293,3 +293,32 @@ export function useTradeReplay(limit = 50) {
     }
   );
 }
+
+// ─── Shadow Model Comparison ─────────────────────────────
+
+export interface ShadowComparison {
+  total: number;
+  agrees: number;
+  disagrees: number;
+  agreement_rate: number | null;
+  recent: Array<ReplayEntry & {
+    shadow?: {
+      quality: number;
+      threshold: number;
+      would_allow: boolean;
+    };
+  }>;
+}
+
+export function useShadowComparison() {
+  return useSWR<ShadowComparison>("/api/ml/shadow", fetcher, {
+    refreshInterval: 30000,
+    fallbackData: {
+      total: 0,
+      agrees: 0,
+      disagrees: 0,
+      agreement_rate: null,
+      recent: [],
+    },
+  });
+}

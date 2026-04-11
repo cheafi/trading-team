@@ -28,7 +28,7 @@ R2 RANGING       → A52 (short only) ← THE ONLY ACTIVE REGIME
 R3 VOLATILE      → DISABLED (fallback: A52)
 ```
 
-Regime detection is **rule-based** (ADX/EMA/ATR/BB thresholds). The regime model trained by `ml_optimizer.py` is NOT used by the live strategy — it's dead complexity under research.
+Regime detection is **rule-based** (ADX/EMA/ATR/BB thresholds). The regime model was removed in iteration 14 (dead code — trained but never loaded by live strategy).
 
 AdaptiveMLStrategy hot-reloads `ml_models/best_params.json` every 300s — **never hard-code strategy params in the strategy file itself**.
 
@@ -40,7 +40,9 @@ backtest_results/*.json → ml_optimizer.py → ml_models/
     ├── best_params.json       (per-regime: c, e, sl, roi_table, kelly_fraction)
     ├── discipline_params.json (cooldown, daily loss limit)
     ├── anti_patterns.json     (toxic hours/days learned from losses)
-    └── rejection_journal.json (persisted trade rejection reasons)
+    ├── rejection_journal.json (persisted trade rejection reasons)
+    ├── trade_replay.json      (entry+exit with features, risk, shadow decisions)
+    └── shadow/                (candidate models for A/B evaluation — log-only)
 ```
 
 **Honest ML assessment:**
