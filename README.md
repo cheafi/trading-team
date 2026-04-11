@@ -108,17 +108,19 @@ This means the bot is currently a **USDT Futures 5m R2 short specialist** tradin
 
 ```
 backtest_results/*.json → ml_optimizer.py → ml_models/
-    ├── regime_model.pkl       (trained but NOT used in live decisions)
-    ├── quality_model.pkl      (3-feature session/direction prior)
+    ├── quality_model.pkl      (5-feature: hour, weekday, is_short, regime, leverage)
     ├── best_params.json       (per-regime: c, e, sl, roi_table, kelly)
     ├── discipline_params.json (cooldown, daily loss limit)
     ├── anti_patterns.json     (toxic hours/days from loss analysis)
-    └── rejection_journal.json (NEW: persisted trade rejection reasons)
+    ├── rejection_journal.json (persisted trade rejection reasons)
+    ├── trade_replay.json      (entry+exit with features, risk, shadow decisions)
+    └── shadow/                (candidate models for A/B evaluation — log-only)
 ```
 
 **Honest assessment:**
-- The quality model uses only `[hour, weekday, is_short]` — it's a session-direction prior, not deep trade intelligence.
-- The regime model is trained by `ml_optimizer.py` but NOT loaded or used by the live strategy. Regime detection is rule-based (ADX/EMA/ATR/BB thresholds).
+- The quality model uses `[hour, weekday, is_short, regime, leverage]` — a session-direction-regime prior, not deep trade intelligence.
+- The regime model was removed in iteration 14 (dead code — trained but never loaded by live strategy). Regime detection is rule-based (ADX/EMA/ATR/BB thresholds).
+- Shadow mode evaluates candidate models alongside production — log-only, cannot trade.
 - Training via the API/dashboard button relearns from existing backtests — it does NOT download fresh data or run new backtests.
 
 ## 🤖 Discord Bot Setup
@@ -160,8 +162,8 @@ trading-team/
 ├── freqtrade/                  # Trading engine
 │   ├── config/                 # config.json, config_backtest.json
 │   └── user_data/
-│       ├── strategies/         # AdaptiveMLStrategy.py, ml_optimizer.py
-│       ├── ml_models/          # Trained models + params
+│       ├── strategies/         # AdaptiveMLStrategy.py, ml_optimizer.py, model_registry.py
+│       ├── ml_models/          # Trained models + params + shadow/
 │       └── backtest_results/   # Backtest output JSONs
 ├── scripts/                    # start.sh, backtest-all.sh, ml-train*.sh
 ├── docs/                       # GitHub Pages site

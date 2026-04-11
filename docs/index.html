@@ -533,19 +533,22 @@
     <h2>🧠 ML Pipeline</h2>
     <div class="pipeline">
       <span class="file">backtest_results/*.json</span> <span class="arrow">→</span> <span class="file">ml_optimizer.py</span> <span class="arrow">→</span> <span class="file">ml_models/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">regime_model.pkl</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">// GradientBoosting regime classifier</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">quality_model.pkl</span> &nbsp;&nbsp;&nbsp;<span class="comment">// GradientBoosting trade quality gate</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">quality_model.pkl</span> &nbsp;&nbsp;&nbsp;<span class="comment">// GradientBoosting trade quality gate (5 features)</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">best_params.json</span> &nbsp;&nbsp;&nbsp;<span class="comment">// per-regime: c, e, sl, roi_table, kelly</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">discipline_params.json</span> <span class="comment">// cooldown, daily loss limit</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="file">anti_patterns.json</span> &nbsp;<span class="comment">// toxic hours/days from loss analysis</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">anti_patterns.json</span> &nbsp;<span class="comment">// toxic hours/days from loss analysis</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">rejection_journal.json</span> <span class="comment">// persisted trade rejection reasons</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">trade_replay.json</span> &nbsp;&nbsp;<span class="comment">// entry+exit with features, risk, shadow decisions</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="file">shadow/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">// candidate models for A/B evaluation (log-only)</span><br>
       <br>
       <span class="comment">// PRO features: Kelly Criterion sizing, MFE-calibrated stops,</span><br>
       <span class="comment">// walk-forward validation, Monte Carlo simulation, equity curve analysis</span>
     </div>
     <div class="callout success" style="margin-top:20px;">
-      <strong>� Honest Assessment</strong>
-      The quality model uses 3 features (hour, weekday, side) — a session-direction prior, not deep trade intelligence.
-      The regime model is trained but NOT used in live decisions. Regime detection is rule-based.
+      <strong>📊 Honest Assessment</strong>
+      The quality model uses 5 features (hour, weekday, is_short, regime, leverage) — a session-direction-regime prior, not deep trade intelligence.
+      The regime model was removed in iteration 14 (dead code — trained but never loaded). Regime detection is rule-based (ADX/EMA/ATR/BB thresholds).
+      Shadow mode evaluates candidate models alongside production — log-only, cannot trade.
       Training via the API relearns from existing backtests — it does NOT download fresh data.
     </div>
   </div>
@@ -766,13 +769,16 @@
 │   └── <span class="dir">user_data/</span>
 │       ├── <span class="dir">strategies/</span>         <span class="desc"># Trading strategy files</span>
 │       │   ├── <span class="file">AdaptiveMLStrategy.py</span>  <span class="desc"># Live meta-strategy</span>
-│       │   └── <span class="file">ml_optimizer.py</span>        <span class="desc"># ML training pipeline</span>
+│       │   ├── <span class="file">ml_optimizer.py</span>        <span class="desc"># ML training pipeline</span>
+│       │   └── <span class="file">model_registry.py</span>      <span class="desc"># Version tracking, drift detection</span>
 │       ├── <span class="dir">ml_models/</span>          <span class="desc"># Trained models + params</span>
 │       │   ├── <span class="file">best_params.json</span>
-│       │   ├── <span class="file">regime_model.pkl</span>
 │       │   ├── <span class="file">quality_model.pkl</span>
 │       │   ├── <span class="file">anti_patterns.json</span>
-│       │   └── <span class="file">discipline_params.json</span>
+│       │   ├── <span class="file">discipline_params.json</span>
+│       │   ├── <span class="file">rejection_journal.json</span>
+│       │   ├── <span class="file">trade_replay.json</span>
+│       │   └── <span class="dir">shadow/</span>            <span class="desc"># Candidate models (log-only)</span>
 │       ├── <span class="dir">backtest_results/</span>   <span class="desc"># Backtest output JSONs</span>
 │       └── <span class="dir">data/</span>               <span class="desc"># Historical candle data</span>
 ├── <span class="dir">scripts/</span>                    <span class="desc"># Automation scripts</span>

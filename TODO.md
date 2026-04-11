@@ -239,7 +239,7 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Shadow mode: candidate model evaluated but cannot trade (log-only A/B comparison)
 - [x] Trade replay: entry+exit logging with features, risk state, PnL attribution
 - [x] Risk cockpit: exposure, concentration, worst-case loss, drift warnings (dashboard)
-- [ ] Public site → clean docs/landing/trust layer; operator console → authenticated app
+- [x] Public site: docs/index.html updated — regime model removed, quality model 5-feature, shadow mode, trade replay, model_registry
 
 ### Deferred
 - [ ] Move to Discord slash commands (not prefix-message)
