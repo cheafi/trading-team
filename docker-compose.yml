@@ -33,7 +33,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 6G
           cpus: "2.0"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v1/ping"]

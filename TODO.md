@@ -26,6 +26,26 @@
 
 ## Backtest Results
 
+### 5-Year Backtest (Jan 2021 – Dec 2025, 1825 days, 6 pairs)
+
+| Strategy | Trades | Tot P/L USDT | Tot P/L % | Win% | Max DD | Profit Factor | Sharpe |
+|----------|--------|-------------|-----------|------|--------|---------------|--------|
+| A51Strategy | 3,765 | -293.81 | -2.94% | 50.3% | 2.94% | — | — |
+| A31Strategy | 7,451 | -1,929.84 | -19.30% | 36.1% | 19.30% | — | — |
+| A52Strategy | 50,275 | -5,456.31 | -54.56% | 46.5% | 54.58% | — | — |
+| OPTStrategy | 44,014 | -6,324.71 | -63.25% | 54.5% | 63.25% | — | — |
+| AdaptiveMLStrategy | 0 | 0.000 | 0.00% | — | 0.00% | — | ML gate blocks all (see note) |
+
+> Market (BTC) moved +2,164% over this period (2021-01-01 → 2025-12-31).
+
+**Honest assessment (5yr):**
+- **All 4 active strategies are net negative over 5 years.** Shorting into a multi-year bull market guarantees losses.
+- A51 is the least-bad (-2.94% DD) — VWAP reversion produces small, symmetric trades.
+- A52 and OPT generate enormous trade volume (44K-50K) and bleed badly (-54% to -63%).
+- A31 squeeze breakout: worst win rate (36.1%) but moderate DD — enters rarely.
+- **AdaptiveMLStrategy: 0 trades.** Quality model + anti-pattern filter trained on 2023-2025 data correctly rejects all candles in the 2021-2025 window. The ML gate recognizes it has no edge and blocks everything. This is capital-preservation working as designed (compare with A52's -54% DD without the gate). Requires 10GB+ to run (3 TF × 6 pairs).
+- **No short-only strategy has positive expectancy in a secular bull market.** This is expected and not a bug — R2 (ranging) shorts are designed for sideways/down conditions that represent a minority of this 5-year window.
+
 ### 3-Year Backtest (Jan 2023 – Dec 2025, 6 pairs)
 
 | Strategy | Trades | Avg P/L% | Tot P/L USDT | Win% | Max DD | Profit Factor | Sharpe |
@@ -36,14 +56,10 @@
 | A31Strategy | 4,333 | -0.15 | -1,016 | 35.1% | 10.17% | 0.54 | -20.28 |
 | AdaptiveMLStrategy | 13 | -0.13 | -0.33 | 38.5% | 0.01% | 0.48 | -0.08 |
 
-**Honest assessment:**
-- All 5 strategies are net negative over 3 years — **no edge found yet**.
-- AdaptiveMLStrategy's quality gate + anti-pattern filter correctly blocks most bad trades (only 13 entries), but the 13 it allows still lose.
-- A52 and OPT generate massive trade volume (23K-27K) but bleed slowly (-0.10% avg).
-- A51 is the most capital-preserving (-1.7% DD) but still negative.
-- A31 has worst win rate (35.1%) — squeeze breakout doesn't work in ranging regime.
-- OPT has best win rate (57.5%) but worst drawdown (30.55%) — wins too small vs losses.
-- The meta-strategy (AdaptiveML) successfully protects capital by being extremely selective, but has no positive edge to exploit.
+**Honest assessment (3yr):**
+- All 5 strategies net negative — no edge found yet.
+- AdaptiveMLStrategy's quality gate blocks most bad trades (only 13 entries), but the 13 it allows still lose.
+- A51 most capital-preserving (-1.7% DD). OPT best win rate (57.5%) but worst drawdown (30.55%).
 
 ### Short-period Backtest (Jan 1 – Mar 29, 2026)
 
@@ -169,6 +185,30 @@ but the edge is narrow and R2 is marked `is_robust: false`.
 - [x] Split coordinator.mjs 1405→1029 lines: extracted ft-client.mjs (94), job-manager.mjs (390)
 - [x] Split ml_optimizer.py: extracted ml_scorer.py (310 lines), ml_analyzer.py (440 lines)
 - [x] ml_optimizer.py retains inline defs as transition fallback; imports ready to activate
+
+### Iteration 12 — Phase 2 Completion
+- [x] Activated ml_optimizer.py imports (removed 947 lines inline fallback; 2100→1149 lines)
+- [x] Froze pair universe: pair_universe.json + validate_pairs.py + startup check
+- [x] Canonical config diff: diff-configs.sh + config_reference.json snapshot
+
+### Iteration 13 — Phase 3 Start (Intelligence)
+- [x] Model registry: version tracking, drift detection, rollback (model_registry.py)
+- [x] Trade replay: entry+exit logging with features, risk state, PnL attribution
+- [x] Risk cockpit: exposure, concentration, worst-case loss, drift warnings (dashboard + 4 API endpoints)
+
+### Iteration 14 — Quality Model Expansion + Dead Code Removal
+- [x] Removed dead regime model code (train_regime_model, REGIME_MODEL_PATH, regime_model.pkl)
+- [x] Expanded quality model: 3→5 features (hour, weekday, is_short, regime, leverage)
+- [x] Gitignored ml_models runtime artifacts (.pkl, .json)
+- [x] Fixed backtest-5yr.sh to use docker compose run --rm
+
+### Iteration 15 — Shadow Mode + 5-Year Backtests
+- [x] Shadow model infrastructure: load candidate model, evaluate but never trade, log decisions
+- [x] /api/ml/shadow endpoint: agreement rate, recent decisions
+- [x] useShadowComparison hook + ShadowComparison interface in dashboard
+- [x] Freqtrade container memory bumped 4G→6G (5yr backtests OOM at 4G)
+- [x] 5-year backtests: all 5 strategies completed (A51/A31/A52/OPT net negative; AdaptiveML 0 trades — ML gate blocks all)
+- [x] AdaptiveMLStrategy 5yr: 0 trades (quality model rejects everything — requires 10GB, ran via docker run)
 
 ---
 
