@@ -201,9 +201,8 @@ export async function downloadData(pairs, timeframes, timerange, discord) {
   }
 
   const args = [
-    "compose",
-    "run",
-    "--rm",
+    "exec",
+    "freqtrade",
     "freqtrade",
     "download-data",
     "--config",
@@ -276,9 +275,8 @@ export async function runBacktests(strategies, timerange, redis, discord, timefr
         : "20240101-20241231";
       const output = await new Promise((resolve, reject) => {
         const args = [
-          "compose",
-          "run",
-          "--rm",
+          "exec",
+          "freqtrade",
           "freqtrade",
           "backtesting",
           "--config",

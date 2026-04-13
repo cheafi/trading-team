@@ -1001,10 +1001,21 @@ const server = createServer(async (req, res) => {
         );
         const entries = JSON.parse(raw);
         const limit = parseInt(url.searchParams.get("limit") || "50", 10);
-        // Return most recent entries
-        const recent = Array.isArray(entries)
+        // Return most recent entries, normalized
+        const recent = (Array.isArray(entries)
           ? entries.slice(-limit).reverse()
-          : [];
+          : []
+        ).map((e) => ({
+          timestamp: e.time || e.timestamp,
+          pair: e.pair,
+          side: e.side,
+          reason: e.reason,
+          regime: e.regime ?? e.features?.regime ?? null,
+          direction_score: e.direction_score ?? e.features?.direction_score ?? null,
+          risk: e.risk,
+          model_ts: e.model_ts,
+          features: e.features,
+        }));
         res.writeHead(200);
         res.end(JSON.stringify(recent));
       } catch (err) {

@@ -15,10 +15,10 @@ export function DiagnosticsPanel() {
   for (const r of rejections || []) {
     reasonCounts[r.reason] = (reasonCounts[r.reason] || 0) + 1;
 
-    const pair = (r as any).pair || "unknown";
+    const pair = r.pair || "unknown";
     pairCounts[pair] = (pairCounts[pair] || 0) + 1;
 
-    const regime = (r as any).regime || "—";
+    const regime = r.regime != null ? String(r.regime) : "—";
     regimeCounts[regime] = (regimeCounts[regime] || 0) + 1;
 
     const side = r.side || "unknown";
@@ -203,7 +203,7 @@ export function DiagnosticsPanel() {
                       : "—"}
                   </span>
                   <span className="text-slate-500 font-mono w-10 shrink-0">
-                    {((r as any).pair || "")
+                    {(r.pair || "")
                       .replace("/USDT:USDT", "")
                       .slice(0, 5)}
                   </span>
@@ -218,7 +218,7 @@ export function DiagnosticsPanel() {
                     {r.reason}
                   </span>
                   <span className="text-slate-600 shrink-0">
-                    R{(r as any).regime || "?"}
+                    R{r.regime != null ? r.regime : "?"}
                   </span>
                 </div>
               ))}

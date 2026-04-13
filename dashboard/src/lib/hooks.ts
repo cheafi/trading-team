@@ -190,8 +190,15 @@ export interface RejectionEntry {
   pair: string;
   side: string;
   reason: string;
-  regime: string;
+  regime: number | string | null;
+  direction_score: number | null;
   details?: Record<string, unknown>;
+  risk?: {
+    consecutive_losses: number;
+    daily_pnl: number;
+    daily_trades: number;
+  };
+  features?: Record<string, number>;
 }
 
 export function useRejections(limit = 50) {

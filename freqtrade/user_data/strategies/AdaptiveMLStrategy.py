@@ -1196,7 +1196,9 @@ class AdaptiveMLStrategy(IStrategy):
                 model = qm.get("model")
                 scaler = qm.get("scaler")
                 thresholds = qm.get("thresholds", {})
-                min_quality = thresholds.get("min_quality", 0.5)
+                # Use p25 threshold for paper trading to allow more signals
+                # through; in live mode, switch to min_quality
+                min_quality = thresholds.get("p25", thresholds.get("min_quality", 0.5))
 
                 if model and scaler and hasattr(current_time, "hour"):
                     leverage = float(
