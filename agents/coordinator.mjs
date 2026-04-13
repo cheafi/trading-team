@@ -889,7 +889,7 @@ const server = createServer(async (req, res) => {
     // ─── Backtest API ────────────────────────────────────────
     // Run backtest (requires API key)
     if (url.pathname === "/api/backtest/run" && req.method === "POST") {
-      if (!isAuthed) {
+      if (!checkAuth(req)) {
         res.writeHead(403);
         res.end(JSON.stringify({ error: "Forbidden: invalid API key" }));
         return;
@@ -1284,7 +1284,7 @@ print('OK')
       }
 
       if (req.method === "POST") {
-        if (!isAuthed) {
+        if (!checkAuth(req)) {
           res.writeHead(403);
           res.end(JSON.stringify({ error: "API key required for kill-switch" }));
           return;
