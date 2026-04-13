@@ -369,6 +369,9 @@ export async function toggleKillSwitch(active: boolean, reason?: string): Promis
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ active, reason }),
   });
+  if (!res.ok) {
+    throw new Error(`Kill-switch toggle failed: HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -404,6 +407,14 @@ export async function triggerBacktest(params: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { status: "error", error: `HTTP ${res.status}: ${text.slice(0, 100)}` };
+    }
+  }
   return res.json();
 }
 

@@ -43,6 +43,14 @@ export function BacktestPanel() {
   const [timeframe, setTimeframe] = useState("5m");
 
   const handleRun = async () => {
+    if (!startDate || !endDate) {
+      setMessage("❌ Please select both start and end dates");
+      return;
+    }
+    if (startDate >= endDate) {
+      setMessage("❌ Start date must be before end date");
+      return;
+    }
     setRunning(true);
     setMessage(null);
     try {
