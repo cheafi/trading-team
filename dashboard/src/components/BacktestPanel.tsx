@@ -159,6 +159,14 @@ export function BacktestPanel() {
       {/* Results table */}
       {results && results.length > 0 && (
         <div>
+          {/* Simulation warning — backtest ≠ live performance */}
+          <div className="mb-3 px-3 py-2 rounded-lg bg-amber-900/30 border border-amber-700/50 text-amber-300 text-[11px] flex items-center gap-2">
+            <span className="text-base">⚠️</span>
+            <span>
+              <strong>SIMULATED RESULTS</strong> — Backtests assume perfect fills, zero slippage, and no market impact.
+              Past performance is not indicative of future results. Not financial advice.
+            </span>
+          </div>
           <span className="text-xs text-slate-500 uppercase tracking-wide mb-2 block">
             Recent Results ({results.length})
           </span>

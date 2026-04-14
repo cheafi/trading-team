@@ -480,5 +480,110 @@ class TestCustomStoploss:
         assert sl < -0.003, f"Base SL {sl} too tight for early trade"
 
 
+# ─── Max DD Halt ────────────────────────────────────────────────
+
+class TestMaxDDHalt:
+    """Test strategy-level max drawdown circuit breaker."""
+
+    def test_dd_halt_triggers_at_20pct(self, tmp_path):
+        """20% drawdown should return 'halt' and create kill switch."""
+        import AdaptiveMLStrategy as mod
+        old_ks = mod.KILL_SWITCH_PATH
+        mod.KILL_SWITCH_PATH = tmp_path / "kill_switch"
+        try:
+            strategy = mod.AdaptiveMLStrategy(
+                config={"exchange": {"name": "binance"}}
+            )
+            # Simulate equity curve: peak at 0.10, current at -0.12
+            # DD = (0.10 - (-0.12)) / 0.10 = 220% — well above 20%
+            strategy._equity_curve = [
+                0.0, 0.02, 0.05, 0.08, 0.10,  # peak
+                0.06, 0.02, -0.02, -0.06, -0.12,  # crash
+            ]
+            result = strategy._check_max_drawdown(datetime(2025, 6, 15))
+            assert result == "halt"
+            assert mod.KILL_SWITCH_PATH.exists(), "Kill switch should be created"
+        finally:
+            mod.KILL_SWITCH_PATH = old_ks
+
+    def test_dd_warn_at_15pct(self):
+        """15% drawdown should return 'warn' but not halt."""
+        from AdaptiveMLStrategy import AdaptiveMLStrategy
+        strategy = AdaptiveMLStrategy(config={"exchange": {"name": "binance"}})
+        # Peak at 1.0, current at 0.84 → DD = 16%
+        strategy._equity_curve = [
+            0.0, 0.2, 0.5, 0.8, 1.0, 0.95, 0.90, 0.84,
+        ]
+        result = strategy._check_max_drawdown(datetime(2025, 6, 15))
+        assert result == "warn"
+
+    def test_dd_ok_for_normal_curve(self):
+        """Small DD should return 'ok'."""
+        from AdaptiveMLStrategy import AdaptiveMLStrategy
+        strategy = AdaptiveMLStrategy(config={"exchange": {"name": "binance"}})
+        strategy._equity_curve = [0.0, 0.01, 0.02, 0.03, 0.025, 0.03]
+        result = strategy._check_max_drawdown(datetime(2025, 6, 15))
+        assert result == "ok"
+
+
+# ─── HMAC Model Integrity ──────────────────────────────────────
+
+class TestModelHMAC:
+    """Test HMAC verification for model files."""
+
+    def test_tofu_creates_hmac(self, tmp_path):
+        """First load should create HMAC (trust on first use)."""
+        import AdaptiveMLStrategy as mod
+        old_hmac = mod.MODEL_HMAC_PATH
+        mod.MODEL_HMAC_PATH = tmp_path / "model_hmac.json"
+        try:
+            result = mod.AdaptiveMLStrategy._verify_model_hmac(
+                "test_model.pkl", b"test data"
+            )
+            assert result is True
+            assert mod.MODEL_HMAC_PATH.exists()
+            stored = json.loads(mod.MODEL_HMAC_PATH.read_text())
+            assert "test_model.pkl" in stored
+        finally:
+            mod.MODEL_HMAC_PATH = old_hmac
+
+    def test_hmac_rejects_tampered_data(self, tmp_path):
+        """Modified file should fail HMAC verification."""
+        import AdaptiveMLStrategy as mod
+        old_hmac = mod.MODEL_HMAC_PATH
+        mod.MODEL_HMAC_PATH = tmp_path / "model_hmac.json"
+        try:
+            # First load — TOFU
+            mod.AdaptiveMLStrategy._verify_model_hmac(
+                "test.pkl", b"original data"
+            )
+            # Second load with different data — should fail
+            result = mod.AdaptiveMLStrategy._verify_model_hmac(
+                "test.pkl", b"tampered data"
+            )
+            assert result is False, "Tampered data should fail HMAC check"
+        finally:
+            mod.MODEL_HMAC_PATH = old_hmac
+
+
+# ─── Correlation Groups ────────────────────────────────────────
+
+class TestCorrelationGroups:
+    """Test correlation group configuration."""
+
+    def test_all_pairs_in_groups(self):
+        """All 6 whitelisted pairs should be in a correlation group."""
+        from AdaptiveMLStrategy import CORRELATION_GROUPS
+        all_pairs = set()
+        for members in CORRELATION_GROUPS.values():
+            all_pairs.update(members)
+        expected = {
+            "ETH/USDT:USDT", "BTC/USDT:USDT", "SOL/USDT:USDT",
+            "BNB/USDT:USDT", "XRP/USDT:USDT", "DOGE/USDT:USDT",
+        }
+        assert expected == all_pairs, f"Missing pairs: {expected - all_pairs}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

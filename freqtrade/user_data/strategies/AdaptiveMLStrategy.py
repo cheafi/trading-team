@@ -34,6 +34,8 @@ Honest assessment:
 Philosophy: "Discipline is the bridge between goals and results."
 """
 
+import hashlib
+import hmac
 import json
 import logging
 import pickle  # noqa: S301 — used for quality_model.pkl
@@ -89,6 +91,26 @@ EVENT_FREEZE_HOURS = 3  # freeze for N hours around event
 
 # Fee structure
 ROUND_TRIP_FEE = 0.001  # 0.10% (Binance futures maker+taker)
+
+# Risk: strategy-level max drawdown halt (defense in depth)
+# This fires INSIDE the strategy even if agent-runner is down.
+MAX_DD_HALT = 0.20  # 20% — auto-enable kill switch
+MAX_DD_WARN = 0.15  # 15% — log warning, reduce size
+
+# Per-pair position limit: max open trades on one pair
+MAX_POSITIONS_PER_PAIR = 2
+
+# Correlated pair groups — simultaneous same-direction entries
+# on pairs within the same group are limited.
+# Rolling 90d correlation: BTC/ETH ~0.87, SOL/ETH ~0.82
+CORRELATION_GROUPS = {
+    "layer1": ["ETH/USDT:USDT", "BTC/USDT:USDT", "SOL/USDT:USDT"],
+    "altcoin": ["BNB/USDT:USDT", "XRP/USDT:USDT", "DOGE/USDT:USDT"],
+}
+MAX_CORRELATED_SAME_DIRECTION = 2  # max 2 of 3 in same group+direction
+
+# HMAC key file for model integrity verification
+MODEL_HMAC_PATH = MODEL_DIR / "model_hmac.json"
 
 # Session hours (UTC)
 SESSION_HOURS = {
@@ -194,11 +216,18 @@ class AdaptiveMLStrategy(IStrategy):
             except Exception:
                 self._best_params = None
 
-        # Load quality model
+        # Load quality model (with HMAC integrity check)
         if QUALITY_MODEL_PATH.exists():
             try:
-                with open(QUALITY_MODEL_PATH, "rb") as f:
-                    self._quality_model_data = pickle.load(f)
+                raw = QUALITY_MODEL_PATH.read_bytes()
+                if self._verify_model_hmac("quality_model.pkl", raw):
+                    self._quality_model_data = pickle.loads(raw)
+                else:
+                    logger.warning(
+                        "quality_model.pkl HMAC mismatch — "
+                        "refusing to load (possible tampering)"
+                    )
+                    self._quality_model_data = None
             except Exception:
                 self._quality_model_data = None
 
@@ -221,8 +250,14 @@ class AdaptiveMLStrategy(IStrategy):
         # Shadow model: loaded if present, never affects trading
         if SHADOW_MODEL_PATH.exists():
             try:
-                with open(SHADOW_MODEL_PATH, "rb") as f:
-                    self._shadow_model_data = pickle.load(f)
+                raw = SHADOW_MODEL_PATH.read_bytes()
+                if self._verify_model_hmac("shadow/quality_model.pkl", raw):
+                    self._shadow_model_data = pickle.loads(raw)
+                else:
+                    logger.warning(
+                        "Shadow model HMAC mismatch — skipping"
+                    )
+                    self._shadow_model_data = None
             except Exception:
                 self._shadow_model_data = None
         else:
@@ -281,13 +316,143 @@ class AdaptiveMLStrategy(IStrategy):
                 "consecutive_losses": self._consecutive_losses,
                 "daily_pnl": round(self._daily_pnl, 6),
                 "daily_trades": self._daily_trades,
-                "recent_results": [round(r, 6) for r in self._recent_results[-self._MAX_RECENT:]],
+                "recent_results": [
+                    round(r, 6)
+                    for r in self._recent_results[-self._MAX_RECENT:]
+                ],
                 "saved_at": datetime.utcnow().isoformat(),
             }
             with open(DISCIPLINE_STATE_PATH, "w") as f:
                 json.dump(state, f, indent=1)
         except Exception as e:
             logger.warning("Failed to save discipline state: %s", e)
+
+    # ─── Model Integrity ─────────────────────────────────
+
+    @staticmethod
+    def _verify_model_hmac(model_name, raw_bytes):
+        """
+        Verify HMAC-SHA256 of a model file against stored digest.
+        If no HMAC file exists yet, trust-on-first-use: compute
+        and store the digest for future verification.
+        Returns True if verified or TOFU, False if mismatch.
+        """
+        try:
+            # Key from env or fallback (production should set MODEL_HMAC_KEY)
+            import os
+            key = os.environ.get(
+                "MODEL_HMAC_KEY", "cc-model-integrity-key"
+            ).encode()
+            digest = hmac.new(key, raw_bytes, hashlib.sha256).hexdigest()
+
+            stored = {}
+            if MODEL_HMAC_PATH.exists():
+                with open(MODEL_HMAC_PATH, "r") as f:
+                    stored = json.load(f)
+
+            if model_name in stored:
+                return hmac.compare_digest(stored[model_name], digest)
+
+            # Trust-on-first-use: store digest
+            stored[model_name] = digest
+            with open(MODEL_HMAC_PATH, "w") as f:
+                json.dump(stored, f, indent=1)
+            logger.info(
+                "TOFU: stored HMAC for %s (first load)", model_name
+            )
+            return True
+        except Exception as e:
+            logger.warning("HMAC check failed for %s: %s", model_name, e)
+            return True  # fail open on HMAC infra error
+
+    # ─── Portfolio Risk Checks ───────────────────────────
+
+    def _check_max_drawdown(self, current_time):
+        """
+        Strategy-level max drawdown halt.
+        If equity curve shows > MAX_DD_HALT, auto-enable kill switch.
+        This fires INSIDE the strategy — defense in depth even if
+        agent-runner is down.
+        Returns: 'halt', 'warn', or 'ok'.
+        """
+        if len(self._equity_curve) < 5:
+            return "ok"
+        peak = max(self._equity_curve)
+        current = self._equity_curve[-1]
+        if peak <= 0:
+            return "ok"
+        dd = (peak - current) / abs(peak) if peak != 0 else 0
+        if dd >= MAX_DD_HALT:
+            # Auto-enable kill switch
+            try:
+                KILL_SWITCH_PATH.touch()
+                logger.critical(
+                    "MAX DD HALT: %.1f%% drawdown — kill switch "
+                    "auto-enabled at %s", dd * 100, current_time,
+                )
+            except Exception:
+                pass
+            return "halt"
+        if dd >= MAX_DD_WARN:
+            logger.warning(
+                "DD WARNING: %.1f%% drawdown at %s",
+                dd * 100, current_time,
+            )
+            return "warn"
+        return "ok"
+
+    def _check_pair_exposure(self, pair):
+        """
+        Per-pair position limit.
+        Returns True if pair is within limit, False if blocked.
+        """
+        try:
+            open_trades = self.dp.get_trades() if hasattr(self.dp, 'get_trades') else []
+            if not open_trades:
+                # Try via Trade model (Freqtrade internals)
+                from freqtrade.persistence import Trade
+                open_trades = Trade.get_trades_proxy(
+                    is_open=True
+                )
+            count = sum(
+                1 for t in open_trades
+                if getattr(t, 'pair', '') == pair
+            )
+            return count < MAX_POSITIONS_PER_PAIR
+        except Exception:
+            return True  # fail open
+
+    def _check_correlation_exposure(self, pair, side):
+        """
+        Cross-pair correlation filter.
+        Block entry if too many correlated pairs already open
+        in the same direction.
+        Returns True if allowed, False if blocked.
+        """
+        try:
+            from freqtrade.persistence import Trade
+            open_trades = Trade.get_trades_proxy(is_open=True)
+            if not open_trades:
+                return True
+
+            # Find which group this pair belongs to
+            pair_group = None
+            for group_name, members in CORRELATION_GROUPS.items():
+                if pair in members:
+                    pair_group = group_name
+                    break
+            if pair_group is None:
+                return True  # not in any group
+
+            group_members = CORRELATION_GROUPS[pair_group]
+            same_dir_count = sum(
+                1 for t in open_trades
+                if getattr(t, 'pair', '') in group_members
+                and getattr(t, 'is_short', False) == (side == 'short')
+            )
+            return same_dir_count < MAX_CORRELATED_SAME_DIRECTION
+        except Exception:
+            return True  # fail open
 
     # ─── Regime Detection ────────────────────────────────
 
@@ -1140,6 +1305,30 @@ class AdaptiveMLStrategy(IStrategy):
                                 return False
                 except Exception:
                     pass
+
+        # STRATEGY-LEVEL MAX DD HALT (defense in depth)
+        dd_status = self._check_max_drawdown(current_time)
+        if dd_status == "halt":
+            self._log_rejection(
+                pair, side, "max_dd_halt_auto_kill", current_time
+            )
+            return False
+
+        # PER-PAIR POSITION LIMIT
+        if not self._check_pair_exposure(pair):
+            self._log_rejection(
+                pair, side,
+                f"per_pair_limit_{MAX_POSITIONS_PER_PAIR}",
+                current_time,
+            )
+            return False
+
+        # CROSS-PAIR CORRELATION FILTER
+        if not self._check_correlation_exposure(pair, side):
+            self._log_rejection(
+                pair, side, "correlated_pair_limit", current_time,
+            )
+            return False
 
         # Reset daily counters
         if hasattr(current_time, "date"):

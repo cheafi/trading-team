@@ -27,6 +27,8 @@ Self-learning pipeline for parameter optimization:
 Run:  python ml_optimizer.py [--retrain]
 """
 import argparse
+import hashlib
+import hmac as hmac_mod
 import json
 import os
 import pickle
@@ -65,6 +67,28 @@ DISCIPLINE_PATH = MODEL_DIR / "discipline_params.json"
 FEE_PER_SIDE = 0.0005  # 0.05%
 ROUND_TRIP_FEE = FEE_PER_SIDE * 2  # 0.10%
 MIN_EDGE_MULTIPLIER = 2.0  # Only trade if expected edge > 2x fees
+
+# HMAC key for model integrity
+MODEL_HMAC_PATH = MODEL_DIR / "model_hmac.json"
+
+
+def _write_model_hmac(model_name, raw_bytes):
+    """Write HMAC-SHA256 digest for a model file."""
+    key = os.environ.get(
+        "MODEL_HMAC_KEY", "cc-model-integrity-key"
+    ).encode()
+    digest = hmac_mod.new(key, raw_bytes, hashlib.sha256).hexdigest()
+    stored = {}
+    if MODEL_HMAC_PATH.exists():
+        try:
+            with open(MODEL_HMAC_PATH, "r") as f:
+                stored = json.load(f)
+        except Exception:
+            stored = {}
+    stored[model_name] = digest
+    with open(MODEL_HMAC_PATH, "w") as f:
+        json.dump(stored, f, indent=1)
+
 
 # Extended regime system: 4 base * 2 momentum = 8 sub-regimes
 REGIME_NAMES = {
@@ -1018,11 +1042,15 @@ def main():
         all_trades_combined
     )
     if q_model is not None:
+        model_data = {
+            "model": q_model, "scaler": q_scaler,
+            "thresholds": q_thresh,
+        }
+        raw_bytes = pickle.dumps(model_data)
         with open(QUALITY_MODEL_PATH, "wb") as f:
-            pickle.dump(
-                {"model": q_model, "scaler": q_scaler,
-                 "thresholds": q_thresh}, f
-            )
+            f.write(raw_bytes)
+        # Write HMAC for integrity verification
+        _write_model_hmac("quality_model.pkl", raw_bytes)
         print("  Quality model saved: {}".format(QUALITY_MODEL_PATH))
         feat_names = [
             "hour", "weekday", "is_short", "regime", "leverage",

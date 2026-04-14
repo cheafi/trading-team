@@ -37,10 +37,13 @@ AdaptiveMLStrategy hot-reloads `ml_models/best_params.json` every 300s — **nev
 ```
 backtest_results/*.json → ml_optimizer.py → ml_models/
     ├── quality_model.pkl      (5-feature: hour, weekday, is_short, regime, leverage)
+    ├── model_hmac.json        (HMAC-SHA256 digests for model integrity)
     ├── best_params.json       (per-regime: c, e, sl, roi_table, kelly_fraction)
     ├── discipline_params.json (cooldown, daily loss limit)
+    ├── discipline_state.json  (volatile counters — survives container restarts)
     ├── anti_patterns.json     (toxic hours/days learned from losses)
     ├── rejection_journal.json (persisted trade rejection reasons)
+    ├── decision_journal.jsonl (append-only: every accept+reject with features)
     ├── trade_replay.json      (entry+exit with features, risk, shadow decisions)
     └── shadow/                (candidate models for A/B evaluation — log-only)
 ```
@@ -69,8 +72,8 @@ docker compose exec freqtrade python /freqtrade/user_data/strategies/ml_optimize
 # Tail all logs
 docker compose logs -f
 
-# Freqtrade API (creds: freqtrader / SuperSecure123)
-curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit
+# Freqtrade API (creds from .env: FREQTRADE_USER / FREQTRADE_PASS)
+curl -u "$FT_USER:$FT_PASS" http://localhost:8080/api/v1/profit
 ```
 
 ## Project Conventions
@@ -108,8 +111,14 @@ curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit
 
 ## Risk Rules (never violate)
 
-- Max drawdown alert: **15%**, emergency halt: **20%**
+- Max drawdown alert: **15%**, emergency halt: **20%** (auto-enables kill switch INSIDE strategy)
 - Max 4 open positions (`max_open_trades: 4`)
+- **Max 2 positions per pair** (per-pair limit in `confirm_trade_entry`)
+- **Max 2 correlated same-direction** entries (BTC+ETH+SOL are group "layer1")
 - Minimum edge: **2× round-trip fee** (0.10%) before entering any trade
 - Default is `"dry_run": true` — set to `false` only with explicit live keys in `.env`
+- `ALLOW_OPEN_AUTH` defaults to `false` — set to `true` in `.env` for dev only
+- Redis requires password (`REDIS_PASSWORD` in `.env`)
+- Model files verified by HMAC-SHA256 on load (tamper detection)
+- Discipline state (consecutive losses, daily PnL) **persists to disk** across restarts
 - R2 regime in `best_params.json` is currently marked `is_robust: false` — treat as research capital only

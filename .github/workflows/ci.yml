@@ -1,0 +1,54 @@
+# CI — Unit Tests + Lint
+# Runs Python unit tests and Node.js lint on every push and PR.
+# Strategy-specific checks (lookahead, backtest) are in strategy-gate.yml.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-tests:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest numpy pandas ta-lib-bin freqtrade
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/test_strategy_logic.py -v --tb=short
+
+  node-lint:
+    name: Node.js Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install agent dependencies
+        working-directory: agents
+        run: npm ci
+
+      - name: Check syntax (no crashes)
+        working-directory: agents
+        run: node --check coordinator.mjs && node --check ft-client.mjs && node --check job-manager.mjs
