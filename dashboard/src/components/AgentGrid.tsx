@@ -64,18 +64,18 @@ export function AgentGrid() {
               )}
             >
               {agent.status === "running"
-                ? "運行中"
+                ? "Running"
                 : agent.status === "error"
-                  ? "錯誤"
-                  : "待命"}
+                  ? "Error"
+                  : "Idle"}
             </span>
             <span className="text-[10px] text-slate-500">
-              {agent.findingsCount} 發現
+              {agent.findingsCount} findings
             </span>
           </div>
           {agent.lastRun && (
             <p className="text-[9px] text-slate-600 mt-1.5 truncate">
-              {new Date(agent.lastRun).toLocaleTimeString("zh-TW")}
+              {new Date(agent.lastRun).toLocaleTimeString("en-GB")}
             </p>
           )}
         </div>

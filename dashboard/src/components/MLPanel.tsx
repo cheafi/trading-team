@@ -28,9 +28,9 @@ const REGIME_EMOJI: Record<string, string> = {
 };
 
 const TREND_DISPLAY: Record<string, { text: string; color: string }> = {
-  improving: { text: "↗ 改善中", color: "text-emerald-400" },
-  degrading: { text: "↘ 退化中", color: "text-red-400" },
-  stable: { text: "→ 穩定", color: "text-slate-400" },
+  improving: { text: "↗ Improving", color: "text-emerald-400" },
+  degrading: { text: "↘ Degrading", color: "text-red-400" },
+  stable: { text: "→ Stable", color: "text-slate-400" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -132,13 +132,13 @@ export function MLPanel() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-          <span>🧠</span> ML 自適應引擎
+          <span>🧠</span> ML Quality Gate
         </h3>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-slate-500">
             {ml?.lastTrained
-              ? `上次訓練: ${new Date(ml.lastTrained).toLocaleString("zh-TW")}`
-              : "尚未訓練"}
+              ? `Last trained: ${new Date(ml.lastTrained).toLocaleString("en-GB")}`
+              : "Not yet trained"}
           </span>
           <button
             onClick={handleTrain}
@@ -149,7 +149,7 @@ export function MLPanel() {
                 : "bg-blue-600 hover:bg-blue-500 text-white cursor-pointer"
             }`}
           >
-            {isRunning ? "⏳ 訓練中..." : training ? "啟動中..." : "🚀 訓練"}
+            {isRunning ? "⏳ Training..." : training ? "Starting..." : "🚀 Train"}
           </button>
         </div>
       </div>
@@ -169,19 +169,19 @@ export function MLPanel() {
       {/* Active Regime */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] text-slate-500 mb-1">當前市場</p>
+          <p className="text-[10px] text-slate-500 mb-1">Current Regime</p>
           <p className={`text-sm font-bold ${regimeColor}`}>
             {regimeEmoji} {regime}
           </p>
         </div>
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] text-slate-500 mb-1">啟用策略</p>
+          <p className="text-[10px] text-slate-500 mb-1">Active Strategy</p>
           <p className="text-sm font-bold text-blue-400">
             {ml?.strategy || "—"}
           </p>
         </div>
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] text-slate-500 mb-1">學習趨勢</p>
+          <p className="text-[10px] text-slate-500 mb-1">Model Trend</p>
           <p className={`text-sm font-bold ${trend.color}`}>{trend.text}</p>
         </div>
       </div>
@@ -190,7 +190,7 @@ export function MLPanel() {
       {ml?.params && (
         <div className="mb-4">
           <p className="text-[10px] text-slate-500 mb-2">
-            各市場最優參數 Optimal Params per Regime
+            Optimal Params per Regime
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-[11px]">
@@ -259,7 +259,7 @@ export function MLPanel() {
       {jobs && jobs.length > 0 && (
         <div className="mb-4">
           <p className="text-[10px] text-slate-500 mb-2">
-            訓練作業 Training Jobs
+            Training Jobs
           </p>
           <div className="space-y-1">
             {jobs.slice(0, 5).map((job) => (
@@ -317,7 +317,7 @@ export function MLPanel() {
       {history && history.length > 0 && (
         <div>
           <p className="text-[10px] text-slate-500 mb-2">
-            訓練歷史 Training History ({history.length} runs)
+            Training History ({history.length} runs)
           </p>
           <div className="flex items-end gap-[2px] h-8">
             {history.slice(-30).map((entry, idx) => {

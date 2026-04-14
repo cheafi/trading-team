@@ -42,7 +42,7 @@ export function StrategyRanking() {
                   #
                 </th>
                 <th className="text-left px-4 py-3 text-slate-400 font-medium text-xs">
-                  策略
+                  Strategy
                 </th>
                 <th className="text-right px-4 py-3 text-slate-400 font-medium text-xs">
                   WR%
@@ -57,7 +57,7 @@ export function StrategyRanking() {
                   Score
                 </th>
                 <th className="text-right px-4 py-3 text-slate-400 font-medium text-xs">
-                  利潤
+                  Profit
                 </th>
               </tr>
             </thead>

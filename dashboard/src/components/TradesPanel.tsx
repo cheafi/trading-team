@@ -10,7 +10,7 @@ export function TradesPanel() {
       <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-slate-300">
-            📋 持倉列表 Open Trades
+            📋 Open Trades
           </h3>
           <span className="text-[10px] px-2 py-1 rounded-full bg-slate-700/50 text-slate-400">
             0 positions
@@ -18,7 +18,7 @@ export function TradesPanel() {
         </div>
         <div className="text-center py-8">
           <p className="text-3xl mb-2">😴</p>
-          <p className="text-sm text-slate-500">目前無持倉 No open positions</p>
+          <p className="text-sm text-slate-500">No open positions</p>
           <p className="text-[10px] text-slate-600 mt-1">Strategy waiting for R2 ranging setup...</p>
         </div>
       </div>
@@ -34,7 +34,7 @@ export function TradesPanel() {
     <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-300">
-          📋 持倉列表 Open Trades
+          📋 Open Trades
         </h3>
         <div className="flex items-center gap-2">
           <span className="text-[10px] px-2 py-1 rounded-full bg-blue-500/20 text-blue-300">

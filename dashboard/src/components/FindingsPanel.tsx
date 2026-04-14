@@ -17,7 +17,7 @@ export function FindingsPanel() {
   if (!findings || findings.length === 0) {
     return (
       <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-6 text-center text-slate-500 text-sm">
-        等待代理人回報... Waiting for agent reports...
+        Waiting for agent reports...
       </div>
     );
   }

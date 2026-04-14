@@ -15,7 +15,7 @@ export function EquityMini() {
     return (
       <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-5">
         <h3 className="text-sm font-semibold text-slate-300 mb-3">
-          📈 資產曲線 Equity
+          📈 Equity
         </h3>
         <div className="text-center py-4 text-slate-500 text-sm">
           No trade data yet
@@ -35,7 +35,7 @@ export function EquityMini() {
     <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-5">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-slate-300">
-          📈 交易統計 Trade Stats
+          📈 Trade Stats
         </h3>
         <span className={`text-lg font-mono font-bold ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
           {isPositive ? "+" : ""}{totalProfit.toFixed(2)}
@@ -44,26 +44,26 @@ export function EquityMini() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] text-slate-500 mb-0.5">勝率 Win Rate</p>
+          <p className="text-[10px] text-slate-500 mb-0.5">Win Rate</p>
           <p className="text-lg font-mono font-bold text-emerald-400">{winRate}%</p>
           <p className="text-[10px] text-slate-600">{wins}W / {losses}L</p>
         </div>
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] text-slate-500 mb-0.5">均利 Avg/Trade</p>
+          <p className="text-[10px] text-slate-500 mb-0.5">Avg / Trade</p>
           <p className={`text-lg font-mono font-bold ${avgPerTrade >= 0 ? "text-emerald-400" : "text-red-400"}`}>
             {avgPerTrade >= 0 ? "+" : ""}{avgPerTrade.toFixed(2)}
           </p>
           <p className="text-[10px] text-slate-600">USDT per trade</p>
         </div>
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] text-slate-500 mb-0.5">已實現 Closed</p>
+          <p className="text-[10px] text-slate-500 mb-0.5">Closed P&L</p>
           <p className={`text-lg font-mono font-bold ${closedProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
             {closedProfit >= 0 ? "+" : ""}{closedProfit.toFixed(2)}
           </p>
           <p className="text-[10px] text-slate-600">USDT realized</p>
         </div>
         <div className="bg-[#111827] rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] text-slate-500 mb-0.5">回撤 Max DD</p>
+          <p className="text-[10px] text-slate-500 mb-0.5">Max DD</p>
           <p className="text-lg font-mono font-bold text-yellow-400">
             {maxDDPct.toFixed(2)}%
           </p>

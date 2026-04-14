@@ -19,7 +19,7 @@ export function PairPerformance() {
     <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-300">
-          🏆 幣對表現 Pair Performance
+          🏆 Pair Performance
         </h3>
         <span className="text-[10px] text-slate-500">
           {sorted.length} pairs

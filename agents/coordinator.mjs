@@ -996,14 +996,24 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/diagnostics/decisions") {
       try {
         const fs = await import("node:fs/promises");
-        const raw = await fs.readFile(
-          "/freqtrade/user_data/ml_models/decision_journal.jsonl",
-          "utf8",
-        );
-        const lines = raw.trim().split("\n").filter(Boolean);
-        let entries = lines.map((l) => {
-          try { return JSON.parse(l); } catch { return null; }
-        }).filter(Boolean);
+        const { createReadStream } = await import("node:fs");
+        const readline = await import("node:readline");
+        const jpath = "/freqtrade/user_data/ml_models/decision_journal.jsonl";
+
+        // Stream the file line-by-line to avoid OOM on large journals.
+        // We keep only the last MAX_LINES entries in memory.
+        const MAX_LINES = 10_000;
+        const rl = readline.createInterface({
+          input: createReadStream(jpath, { encoding: "utf8" }),
+          crlfDelay: Infinity,
+        });
+        const buffer = [];
+        for await (const line of rl) {
+          if (!line.trim()) continue;
+          try { buffer.push(JSON.parse(line)); } catch { /* skip malformed */ }
+          if (buffer.length > MAX_LINES) buffer.shift();
+        }
+        let entries = buffer;
 
         // Filters
         const pairFilter = url.searchParams.get("pair");
@@ -1515,6 +1525,39 @@ async function main() {
     log.info(`🌐 Agent API listening on port ${PORT}`);
   });
 }
+
+// ─── Graceful Shutdown ─────────────────────────────────────────
+function gracefulShutdown(signal) {
+  log.info(`${signal} received — shutting down gracefully...`);
+
+  // Stop all cron jobs
+  for (const job of jobs) {
+    try { job.stop(); } catch { /* already stopped */ }
+  }
+  log.info("Cron jobs stopped");
+
+  // Close HTTP server (stop accepting new connections)
+  server.close(() => {
+    log.info("HTTP server closed");
+  });
+
+  // Disconnect Redis
+  redis.quit().then(() => {
+    log.info("Redis disconnected");
+    process.exit(0);
+  }).catch(() => {
+    process.exit(1);
+  });
+
+  // Force exit after 10s if graceful shutdown stalls
+  setTimeout(() => {
+    log.warn("Graceful shutdown timeout — forcing exit");
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 main().catch((err) => {
   log.fatal({ err }, "Fatal startup error");

@@ -25,7 +25,7 @@ export function PnLCard() {
     <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-5">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-slate-300">
-          💰 損益總覽 P&L
+          💰 P&L Overview
         </h3>
         <div className="flex items-center gap-2">
           {!connected && (

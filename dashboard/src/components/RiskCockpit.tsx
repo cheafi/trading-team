@@ -234,6 +234,15 @@ export function RiskCockpit() {
           <button
             disabled={toggling}
             onClick={async () => {
+              const action = killSwitch?.active ? "DEACTIVATE" : "ACTIVATE";
+              const confirmed = window.confirm(
+                `⚠️ ${action} Kill Switch?\n\n` +
+                (killSwitch?.active
+                  ? "This will RESUME trading. Are you sure the issue is resolved?"
+                  : "This will BLOCK ALL new entries immediately.\nAll open positions will be managed by existing SL/TP rules.") +
+                "\n\nConfirm?"
+              );
+              if (!confirmed) return;
               setToggling(true);
               try {
                 await toggleKillSwitch(

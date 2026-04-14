@@ -213,7 +213,8 @@ class AdaptiveMLStrategy(IStrategy):
                         "(./scripts/ml-train.sh or curl -X POST :3001/api/ml/train)",
                         age_days,
                     )
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to load best_params.json: %s", e)
                 self._best_params = None
 
         # Load quality model (with HMAC integrity check)
@@ -228,7 +229,8 @@ class AdaptiveMLStrategy(IStrategy):
                         "refusing to load (possible tampering)"
                     )
                     self._quality_model_data = None
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to load quality_model.pkl: %s", e)
                 self._quality_model_data = None
 
         # Load discipline params
@@ -236,7 +238,8 @@ class AdaptiveMLStrategy(IStrategy):
             try:
                 with open(DISCIPLINE_PATH, "r") as f:
                     self._discipline_params = json.load(f)
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to load discipline_params.json: %s", e)
                 self._discipline_params = None
 
         # Load anti-patterns (learned from mistakes)
@@ -244,7 +247,8 @@ class AdaptiveMLStrategy(IStrategy):
             try:
                 with open(ANTI_PATTERN_PATH, "r") as f:
                     self._anti_patterns = json.load(f)
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to load anti_patterns.json: %s", e)
                 self._anti_patterns = None
 
         # Shadow model: loaded if present, never affects trading
@@ -258,7 +262,8 @@ class AdaptiveMLStrategy(IStrategy):
                         "Shadow model HMAC mismatch — skipping"
                     )
                     self._shadow_model_data = None
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to load shadow model: %s", e)
                 self._shadow_model_data = None
         else:
             self._shadow_model_data = None
