@@ -30,6 +30,7 @@ import argparse
 import hashlib
 import hmac as hmac_mod
 import json
+import logging
 import os
 import pickle
 import sys
@@ -52,6 +53,9 @@ from ml_analyzer import (
     monte_carlo_equity, analyze_equity_curve, analyze_losing_patterns,
 )
 from model_registry import ModelRegistry
+from log_config import get_structured_logger
+
+ml_log = get_structured_logger("ml_optimizer")
 
 BACKTEST_DIR = Path(os.getenv("BACKTEST_DIR", "/freqtrade/user_data/backtest_results"))
 MODEL_DIR = Path(os.getenv("MODEL_DIR", "/freqtrade/user_data/ml_models"))
@@ -130,7 +134,7 @@ def load_backtest_results():
     """Load trades from all backtest .json and .zip files."""
     all_strat_trades = defaultdict(list)
     if not BACKTEST_DIR.exists():
-        print("Warning: Backtest dir not found: " + str(BACKTEST_DIR))
+        ml_log.warning("Backtest dir not found: %s", BACKTEST_DIR)
         return all_strat_trades
 
     def _ingest(data):
@@ -146,7 +150,7 @@ def load_backtest_results():
             with open(f) as fp:
                 _ingest(json.load(fp))
         except Exception as e:
-            print("Warning: " + f.name + ": " + str(e))
+            ml_log.warning("Failed to parse %s: %s", f.name, e)
 
     for zf in sorted(BACKTEST_DIR.glob("backtest-result-*.zip")):
         try:
@@ -156,10 +160,10 @@ def load_backtest_results():
                         with z.open(member) as fp:
                             _ingest(json.load(fp))
         except Exception as e:
-            print("Warning: " + zf.name + ": " + str(e))
+            ml_log.warning("Failed to parse %s: %s", zf.name, e)
 
     total = sum(len(v) for v in all_strat_trades.values())
-    print("Loaded {:,} trades across {} strategies".format(total, len(all_strat_trades)))
+    ml_log.info("Loaded %d trades across %d strategies", total, len(all_strat_trades))
     return all_strat_trades
 
 
@@ -732,9 +736,9 @@ def save_performance_history(strat_trades, perf_feedback):
     try:
         with open(PERF_HISTORY_PATH, "w") as f:
             json.dump(history, f, indent=2)
-        print("Performance history saved: " + str(PERF_HISTORY_PATH))
+        ml_log.info("Performance history saved: %s", PERF_HISTORY_PATH)
     except Exception as e:
-        print("Warning: Could not save perf history: " + str(e))
+        ml_log.warning("Could not save perf history: %s", e)
 
 
 def save_training_log(strat_scores, best_params, total_trades, regime_scores):
@@ -768,7 +772,7 @@ def save_training_log(strat_scores, best_params, total_trades, regime_scores):
     log = log[-100:]
     with open(TRAINING_LOG_PATH, "w") as f:
         json.dump(log, f, indent=2)
-    print("Training log saved ({} entries)".format(len(log)))
+    ml_log.info("Training log saved (%d entries)", len(log))
 
 
 def main():

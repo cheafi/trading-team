@@ -106,6 +106,7 @@ Path.mkdir = _patched_mkdir
 import AdaptiveMLStrategy as _strategy_mod
 import regime_engine as _regime_mod
 import discipline_engine as _discipline_mod
+import log_config as _log_config_mod
 
 # Now redirect all the path constants to temp
 _strategy_mod.MODEL_DIR = _TMP_MODEL_DIR

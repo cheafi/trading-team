@@ -1,14 +1,23 @@
 "use client";
 
-import { usePerformance } from "@/lib/hooks";
+import { usePerformance, useFunding } from "@/lib/hooks";
 
 export function PairPerformance() {
   const { data: performance } = usePerformance();
+  const { data: funding } = useFunding();
 
   if (!performance || performance.length === 0) {
     return (
       <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-6 animate-pulse h-48" />
     );
+  }
+
+  // Build funding rate lookup: "ETH/USDT:USDT" → rate
+  const frMap: Record<string, number> = {};
+  if (funding) {
+    for (const f of funding) {
+      frMap[f.pair] = f.fundingRate;
+    }
   }
 
   // Sort by profit descending
@@ -34,6 +43,11 @@ export function PairPerformance() {
             (Math.abs(pair.profit) / maxProfit) * 100,
             100
           );
+          const fr = frMap[pair.pair];
+          const hasFR = fr !== undefined && fr !== null;
+          // Positive FR = longs pay shorts (good for shorts)
+          // Negative FR = shorts pay longs (bad for shorts)
+          const frPositive = hasFR && fr >= 0;
 
           return (
             <div key={pair.pair} className="group">
@@ -45,6 +59,22 @@ export function PairPerformance() {
                   <span className="text-[10px] text-slate-500">
                     {pair.count} trades
                   </span>
+                  {hasFR && (
+                    <span
+                      className={`text-[9px] font-mono px-1 py-0.5 rounded ${
+                        frPositive
+                          ? "bg-emerald-900/40 text-emerald-400"
+                          : "bg-red-900/40 text-red-400"
+                      }`}
+                      title={`Funding rate: ${(fr * 100).toFixed(4)}% — ${
+                        frPositive
+                          ? "longs pay shorts ✓"
+                          : "shorts pay longs ✗"
+                      }`}
+                    >
+                      FR {(fr * 100).toFixed(3)}%
+                    </span>
+                  )}
                 </div>
                 <span
                   className={`text-xs font-mono font-bold ${

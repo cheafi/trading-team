@@ -771,6 +771,60 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Funding rates endpoint (Binance futures)
+    // Fetches live funding rates for all whitelisted pairs.
+    // Cached in Redis with 5-minute TTL to reduce API calls.
+    if (url.pathname === "/api/funding") {
+      const CACHE_KEY = "trading:funding_rates";
+      const CACHE_TTL = 300; // 5 minutes
+      try {
+        // Check Redis cache first
+        const cached = await redis.get(CACHE_KEY);
+        if (cached) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(cached);
+          return;
+        }
+        // Fetch from Binance public API (no auth required)
+        const PAIRS = [
+          "ETHUSDT", "BTCUSDT", "SOLUSDT",
+          "BNBUSDT", "XRPUSDT", "DOGEUSDT",
+        ];
+        const resp = await fetch(
+          "https://fapi.binance.com/fapi/v1/premiumIndex?" +
+            PAIRS.map((s) => `symbol=${s}`).join("&"),
+        );
+        // premiumIndex doesn't support multiple symbols in one call,
+        // so we fetch all at once from the list endpoint
+        const allResp = await fetch(
+          "https://fapi.binance.com/fapi/v1/premiumIndex",
+        );
+        const allData = await allResp.json();
+        const filtered = allData
+          .filter((d) => PAIRS.includes(d.symbol))
+          .map((d) => ({
+            symbol: d.symbol,
+            pair: d.symbol.replace("USDT", "/USDT:USDT"),
+            fundingRate: parseFloat(d.lastFundingRate || "0"),
+            markPrice: parseFloat(d.markPrice || "0"),
+            indexPrice: parseFloat(d.indexPrice || "0"),
+            nextFundingTime: d.nextFundingTime,
+            time: d.time,
+          }));
+        const result = JSON.stringify(filtered);
+        await redis.set(CACHE_KEY, result, "EX", CACHE_TTL);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(result);
+      } catch (err) {
+        log.error({ err }, "Funding rate fetch failed");
+        res.writeHead(502);
+        res.end(
+          JSON.stringify({ error: "Funding rate fetch failed", detail: err.message }),
+        );
+      }
+      return;
+    }
+
     // ML state endpoint
     if (url.pathname === "/api/ml/state") {
       const mlState = await redis.get("trading:ml:state");

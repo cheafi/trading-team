@@ -70,6 +70,7 @@ from discipline_engine import (
     log_trade_entry,
     log_trade_exit,
 )
+from log_config import configure_json_logging, get_structured_logger
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +195,11 @@ class AdaptiveMLStrategy(IStrategy):
     _trade_replay = []  # trade replay: entry+exit decisions
     _MAX_REPLAY = 200
 
+    # Funding rate cache (populated in bot_loop_start for live/dry_run)
+    _funding_rates: dict = {}  # {pair: {"rate": float, "ts": str}}
+    _FUNDING_RATE_CACHE_TTL = 300  # 5 minutes
+    _last_funding_fetch = 0
+
     # ─── Multi-timeframe informative pairs ───────────────
     def informative_pairs(self):
         """Request 15m and 1h data for higher-TF confirmation."""
@@ -203,6 +209,52 @@ class AdaptiveMLStrategy(IStrategy):
             informative.append((pair, "15m"))
             informative.append((pair, "1h"))
         return informative
+
+    # ─── Funding Rate Fetcher (live/dry_run only) ────────
+
+    def bot_start(self, **kwargs):
+        """Called once after strategy load. Configure JSON logging."""
+        configure_json_logging()
+        logger.info("AdaptiveMLStrategy initialized — R2 short specialist")
+
+    def bot_loop_start(self, current_time, **kwargs):
+        """
+        Fetch funding rates for all whitelisted pairs every 5 minutes.
+        Uses Freqtrade's exchange (ccxt) to call Binance premiumIndex.
+        Only runs in live/dry_run — no-op during backtest/hyperopt.
+        """
+        if self.config.get("runmode", {}).value not in ("live", "dry_run"):
+            return
+        now = datetime.now().timestamp()
+        if now - self._last_funding_fetch < self._FUNDING_RATE_CACHE_TTL:
+            return
+        self._last_funding_fetch = now
+        try:
+            exchange = self.dp._exchange._api  # ccxt instance
+            pairs = self.dp.current_whitelist()
+            for pair in pairs:
+                try:
+                    fr = exchange.fetch_funding_rate(pair)
+                    self._funding_rates[pair] = {
+                        "rate": float(fr.get("fundingRate", 0) or 0),
+                        "next_ts": fr.get("fundingTimestamp"),
+                        "mark_price": float(fr.get("markPrice", 0) or 0),
+                    }
+                except Exception as e:
+                    logger.debug(
+                        "Funding rate fetch failed for %s: %s", pair, e
+                    )
+            if self._funding_rates:
+                logger.info(
+                    "Funding rates updated: %s",
+                    {p: f"{v['rate']:.6f}" for p, v in self._funding_rates.items()},
+                )
+        except Exception as e:
+            logger.debug("Funding rate batch fetch failed: %s", e)
+
+    def get_funding_rates(self) -> dict:
+        """Public accessor for cached funding rates (used by dashboard API)."""
+        return self._funding_rates
 
     def _load_models(self):
         """Hot-reload ML models and params from disk."""
@@ -1017,6 +1069,30 @@ class AdaptiveMLStrategy(IStrategy):
                 features=last,
             )
             return False
+
+        # FUNDING RATE FILTER (live/dry_run only)
+        # Positive funding → longs pay shorts → favors short entries
+        # Negative funding → shorts pay longs → penalizes short entries
+        # Threshold: 0.01% — ignore negligible rates
+        fr_info = self._funding_rates.get(pair)
+        if fr_info is not None:
+            fr = fr_info.get("rate", 0)
+            # Block shorts when funding is strongly negative (shorts pay)
+            if side == "short" and fr < -0.0003:  # -0.03%
+                self._log_rejection(
+                    pair, side,
+                    f"funding_rate_negative_{fr:.6f}",
+                    current_time, features=last,
+                )
+                return False
+            # Block longs when funding is strongly positive (longs pay)
+            if side == "long" and fr > 0.0003:  # +0.03%
+                self._log_rejection(
+                    pair, side,
+                    f"funding_rate_positive_{fr:.6f}",
+                    current_time, features=last,
+                )
+                return False
 
         # 1h trend disagreement — only in extreme trends
         trend_1h = last.get("trend_1h", 0)

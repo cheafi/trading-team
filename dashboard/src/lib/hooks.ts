@@ -129,6 +129,24 @@ export function usePerformance() {
   });
 }
 
+// ─── Funding Rates ──────────────────────────────────────
+export interface FundingRate {
+  symbol: string;
+  pair: string;
+  fundingRate: number;
+  markPrice: number;
+  indexPrice: number;
+  nextFundingTime: number;
+  time: number;
+}
+
+export function useFunding() {
+  return useSWR<FundingRate[]>("/api/funding", fetcher, {
+    refreshInterval: 60000,
+    fallbackData: [],
+  });
+}
+
 export interface TrainingEntry {
   timestamp: string;
   trade_count: number;

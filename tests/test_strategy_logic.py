@@ -845,6 +845,194 @@ class TestWalkForward:
         assert isinstance(result["is_robust"], bool)
 
 
+# ─── Funding Rate Filter ──────────────────────────────────────
+
+class TestFundingRateFilter:
+    """Test funding rate filter logic in confirm_trade_entry."""
+
+    def _make_strategy(self):
+        from AdaptiveMLStrategy import AdaptiveMLStrategy
+        strategy = AdaptiveMLStrategy(config={"exchange": {"name": "binance"}})
+        strategy.dp = MagicMock()
+        strategy.dp.get_analyzed_dataframe.return_value = (make_ohlcv(300), None)
+        return strategy
+
+    def test_positive_fr_allows_short(self, tmp_path):
+        """Positive funding rate should allow short entries (longs pay shorts)."""
+        import AdaptiveMLStrategy as mod
+        old_ks = mod.KILL_SWITCH_PATH
+        old_dj = mod.DECISION_JOURNAL_PATH
+        old_rj = mod.REJECTION_LOG_PATH
+        mod.KILL_SWITCH_PATH = tmp_path / "kill_switch"
+        mod.DECISION_JOURNAL_PATH = tmp_path / "journal.jsonl"
+        mod.REJECTION_LOG_PATH = tmp_path / "rejections.json"
+        try:
+            strategy = self._make_strategy()
+            # Positive FR = longs pay shorts → good for shorts
+            strategy._funding_rates = {
+                "ETH/USDT:USDT": {"rate": 0.0005, "next_ts": None, "mark_price": 3000},
+            }
+            result = strategy.confirm_trade_entry(
+                pair="ETH/USDT:USDT", order_type="limit",
+                amount=100, rate=3000.0, time_in_force="GTC",
+                current_time=datetime(2025, 6, 15, 12, 0),
+                entry_tag="ml_a52_r2_short", side="short",
+            )
+            assert result is True, "Positive FR should allow shorts"
+        finally:
+            mod.KILL_SWITCH_PATH = old_ks
+            mod.DECISION_JOURNAL_PATH = old_dj
+            mod.REJECTION_LOG_PATH = old_rj
+
+    def test_negative_fr_blocks_short(self, tmp_path):
+        """Strongly negative funding rate should block short entries."""
+        import AdaptiveMLStrategy as mod
+        old_ks = mod.KILL_SWITCH_PATH
+        old_dj = mod.DECISION_JOURNAL_PATH
+        old_rj = mod.REJECTION_LOG_PATH
+        mod.KILL_SWITCH_PATH = tmp_path / "kill_switch"
+        mod.DECISION_JOURNAL_PATH = tmp_path / "journal.jsonl"
+        mod.REJECTION_LOG_PATH = tmp_path / "rejections.json"
+        try:
+            strategy = self._make_strategy()
+            # Negative FR = shorts pay longs → bad for shorts
+            strategy._funding_rates = {
+                "ETH/USDT:USDT": {"rate": -0.0005, "next_ts": None, "mark_price": 3000},
+            }
+            result = strategy.confirm_trade_entry(
+                pair="ETH/USDT:USDT", order_type="limit",
+                amount=100, rate=3000.0, time_in_force="GTC",
+                current_time=datetime(2025, 6, 15, 12, 0),
+                entry_tag="ml_a52_r2_short", side="short",
+            )
+            assert result is False, "Negative FR should block shorts"
+        finally:
+            mod.KILL_SWITCH_PATH = old_ks
+            mod.DECISION_JOURNAL_PATH = old_dj
+            mod.REJECTION_LOG_PATH = old_rj
+
+    def test_neutral_fr_allows_short(self, tmp_path):
+        """Near-zero funding rate should allow shorts (within threshold)."""
+        import AdaptiveMLStrategy as mod
+        old_ks = mod.KILL_SWITCH_PATH
+        old_dj = mod.DECISION_JOURNAL_PATH
+        old_rj = mod.REJECTION_LOG_PATH
+        mod.KILL_SWITCH_PATH = tmp_path / "kill_switch"
+        mod.DECISION_JOURNAL_PATH = tmp_path / "journal.jsonl"
+        mod.REJECTION_LOG_PATH = tmp_path / "rejections.json"
+        try:
+            strategy = self._make_strategy()
+            # Near-zero FR (within ±0.03% threshold)
+            strategy._funding_rates = {
+                "ETH/USDT:USDT": {"rate": -0.0001, "next_ts": None, "mark_price": 3000},
+            }
+            result = strategy.confirm_trade_entry(
+                pair="ETH/USDT:USDT", order_type="limit",
+                amount=100, rate=3000.0, time_in_force="GTC",
+                current_time=datetime(2025, 6, 15, 12, 0),
+                entry_tag="ml_a52_r2_short", side="short",
+            )
+            assert result is True, "Neutral FR should allow shorts"
+        finally:
+            mod.KILL_SWITCH_PATH = old_ks
+            mod.DECISION_JOURNAL_PATH = old_dj
+            mod.REJECTION_LOG_PATH = old_rj
+
+    def test_no_fr_data_allows_entry(self, tmp_path):
+        """No funding rate data (backtest mode) should not block entries."""
+        import AdaptiveMLStrategy as mod
+        old_ks = mod.KILL_SWITCH_PATH
+        old_dj = mod.DECISION_JOURNAL_PATH
+        old_rj = mod.REJECTION_LOG_PATH
+        mod.KILL_SWITCH_PATH = tmp_path / "kill_switch"
+        mod.DECISION_JOURNAL_PATH = tmp_path / "journal.jsonl"
+        mod.REJECTION_LOG_PATH = tmp_path / "rejections.json"
+        try:
+            strategy = self._make_strategy()
+            # Empty funding rates = backtest or unavailable
+            strategy._funding_rates = {}
+            result = strategy.confirm_trade_entry(
+                pair="ETH/USDT:USDT", order_type="limit",
+                amount=100, rate=3000.0, time_in_force="GTC",
+                current_time=datetime(2025, 6, 15, 12, 0),
+                entry_tag="ml_a52_r2_short", side="short",
+            )
+            assert result is True, "No FR data should not block entry"
+        finally:
+            mod.KILL_SWITCH_PATH = old_ks
+            mod.DECISION_JOURNAL_PATH = old_dj
+            mod.REJECTION_LOG_PATH = old_rj
+
+    def test_fr_accessor_returns_cached_data(self):
+        """get_funding_rates() should return the cached dict."""
+        from AdaptiveMLStrategy import AdaptiveMLStrategy
+        strategy = AdaptiveMLStrategy(config={"exchange": {"name": "binance"}})
+        strategy._funding_rates = {
+            "ETH/USDT:USDT": {"rate": 0.0003, "next_ts": None, "mark_price": 3000},
+        }
+        result = strategy.get_funding_rates()
+        assert "ETH/USDT:USDT" in result
+        assert result["ETH/USDT:USDT"]["rate"] == 0.0003
+
+
+# ─── Structured JSON Logging ─────────────────────────────────
+
+class TestStructuredLogging:
+    """Test the JSON logging configuration module."""
+
+    def test_json_formatter_output(self):
+        """JSONFormatter should produce valid JSON lines."""
+        from log_config import JSONFormatter
+        import logging
+        fmt = JSONFormatter()
+        record = logging.LogRecord(
+            name="test_component", level=logging.INFO,
+            pathname="test.py", lineno=1, msg="hello world",
+            args=None, exc_info=None,
+        )
+        output = fmt.format(record)
+        parsed = json.loads(output)
+        assert parsed["level"] == "INFO"
+        assert parsed["component"] == "test_component"
+        assert parsed["msg"] == "hello world"
+        assert "ts" in parsed
+
+    def test_json_formatter_extra_fields(self):
+        """JSONFormatter should include known extra fields."""
+        from log_config import JSONFormatter
+        import logging
+        fmt = JSONFormatter()
+        record = logging.LogRecord(
+            name="strategy", level=logging.WARNING,
+            pathname="test.py", lineno=1,
+            msg="trade rejected", args=None, exc_info=None,
+        )
+        record.pair = "ETH/USDT:USDT"
+        record.side = "short"
+        record.funding_rate = 0.0005
+        output = fmt.format(record)
+        parsed = json.loads(output)
+        assert parsed["pair"] == "ETH/USDT:USDT"
+        assert parsed["side"] == "short"
+        assert parsed["funding_rate"] == 0.0005
+
+    def test_configure_noop_without_env(self):
+        """configure_json_logging should be a no-op without env var."""
+        from log_config import configure_json_logging
+        import logging
+        original_handlers = logging.getLogger().handlers[:]
+        configure_json_logging()  # should not change handlers
+        assert logging.getLogger().handlers == original_handlers
+
+    def test_get_structured_logger(self):
+        """get_structured_logger should return a Logger instance."""
+        from log_config import get_structured_logger
+        import logging
+        lg = get_structured_logger("test_module")
+        assert isinstance(lg, logging.Logger)
+        assert lg.name == "test_module"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
