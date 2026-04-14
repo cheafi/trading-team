@@ -14,7 +14,7 @@
 - Quality model gate (5-feature session-direction-regime prior)
 - Anti-pattern filter (toxic hours/days from loss analysis)
 - Shadow model infrastructure (candidate evaluation without trading)
-- Decision journal for all trade rejections
+- Decision journal for all trade rejections (v4: durable append-only JSONL)
 
 ### What the system does NOT do (yet)
 - Multi-regime live trading (R0/R1/R3 disabled)
@@ -231,6 +231,47 @@ capital preservation is working (0.01% DD vs -25% market).
 - [x] Wired auto-learn into backtester agent: checks params age, triggers download→backtest→retrain if >7d
 - [x] Fixed auto-learn.sh branding (DanDan → CC)
 
+### Iteration 18 — System Alignment: Truth, Decision Journal v4, Risk Hardening
+Second comprehensive review identified main problem as **system alignment** — "presentation more ambitious than actual live decision logic." Priority: truthfulness, risk governance, decision observability.
+
+**Truth Alignment (27 items audited, 17 fixed):**
+- [x] Dashboard: `ML Adaptive Engine` → `ML Quality Gate` (page.tsx header)
+- [x] Dashboard: `AI Trading Dashboard` → `Algo Trading Dashboard` (browser tab)
+- [x] Docs: `7 autonomous agents. ML-informed` → `7 cron-scheduled agents. Rule-based`
+- [x] Discord: `Intelligence` section → `System State`
+- [x] Discord: `ML Engine` embed → `ML Quality Gate`
+- [x] ML-optimizer SKILL.md: removed dead regime_model.pkl claims, corrected pipeline
+- [x] ml_optimizer.py: `v3 PRO` → `v3`, `Professional quant-grade` → honest description
+- [x] quant-researcher SKILL.md: removed "brain of the team" inflated language
+- [x] manifest.json: `DanDan` → `CC` brand alignment
+- [x] Strategy file: stripped all `PRO:` labels from comments/docstrings (20+ occurrences)
+
+**Decision Journal v4:**
+- [x] Append-only JSONL (decision_journal.jsonl) — never truncated, durable audit trail
+- [x] Unified accept+reject log: every trade signal decision persisted
+- [x] Edge score + quality threshold on every entry
+- [x] Entry rate at rejection time (for counterfactual: "what happened after we said no?")
+- [x] Searchable API: /api/diagnostics/decisions with pair/decision/side/reason/date/regime filters
+- [x] Summary stats: total, accepted, rejected, accept rate
+- [x] Dashboard: tabbed view (All Decisions / Rejections), pair+decision filters, accept rate badge, edge score display
+
+**Model Registry v2:**
+- [x] Added: feature_hash (SHA-256 of quality_model.pkl)
+- [x] Added: data_hash (SHA-256 of backtest result files)
+- [x] Added: training_window + validation_window (80/20 split dates + trade counts)
+- [x] Added: feature_names list for provenance
+- [x] API surfaces all new fields in risk cockpit drift response
+
+**Risk Cockpit hardening:**
+- [x] Net exposure (signed: negative=short, positive=long)
+- [x] Daily P&L + weekly P&L with trade counts
+- [x] Deterministic DD guards: -2% daily limit, -5% weekly limit with breach detection
+- [x] Leverage readout (max + average across open positions)
+- [x] DD breach warning banner when limits exceeded
+- [x] 4×4 stat grid (from 2×4): exposure, DD guard, model, concentration
+
+---
+
 ### Iteration 17 — Professional Review Response: Deterministic Risk + Benchmark
 Responding to comprehensive professional review that identified 8 critical modules and a Phase 4 roadmap.
 
@@ -291,6 +332,10 @@ Responding to comprehensive professional review that identified 8 critical modul
 - [x] Kill-switch: file-based toggle, API endpoint, dashboard UI with 1-click activate/deactivate
 - [x] Event freeze windows: auto-block entries ±3h around FOMC/CPI/NFP (2026 calendar seeded)
 - [x] Enhanced rejection journal: v3 adds regime + direction_score per rejection
+- [x] Decision Journal v4: append-only JSONL, unified accept+reject, searchable API, counterfactual rates
+- [x] Model Registry v2: feature_hash, data_hash, training/validation windows, feature_names
+- [x] Risk Cockpit v2: net exposure, daily/weekly DD guards, leverage, breach warnings
+- [x] Truth alignment: 27-item audit, 17 items fixed (dashboard, docs, Discord, SKILL, strategy)
 - [ ] Move to Discord slash commands (not prefix-message)
 - [ ] Role-based permissions for train/backtest/pause
 - [ ] OpenTelemetry: traces, metrics, logs across all services

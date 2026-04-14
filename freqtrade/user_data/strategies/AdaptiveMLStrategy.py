@@ -1,5 +1,5 @@
 """
-AdaptiveML v3 PRO — USDT Futures 5m R2 Short Specialist
+AdaptiveML v3 — USDT Futures 5m R2 Short Specialist
 ====================================================
 Currently a single-regime specialist (R2 RANGING, short-only).
 Other regimes (R0/R1/R3) are disabled — they produce more
@@ -12,7 +12,7 @@ SL losses than ROI wins.
   4. Performance feedback loop (entry_adj/size_adj)
   5. Rule-based regime detection (4 base + 8 sub)
 
-  PRO:
+  DISCIPLINE:
   6.  Kelly Criterion position sizing (fractional Kelly)
   7.  MFE-calibrated trailing stops (data-driven)
   8.  Equity curve circuit breaker (pause on drawdown)
@@ -68,6 +68,9 @@ SHADOW_MODEL_PATH = SHADOW_DIR / "quality_model.pkl"
 
 # Decision journal — persists every trade rejection reason
 REJECTION_LOG_PATH = MODEL_DIR / "rejection_journal.json"
+
+# Decision Journal v4 — append-only JSONL with every accept+reject
+DECISION_JOURNAL_PATH = MODEL_DIR / "decision_journal.jsonl"
 
 # Trade replay — per-trade entry/exit with full context
 TRADE_REPLAY_PATH = MODEL_DIR / "trade_replay.json"
@@ -134,14 +137,14 @@ class AdaptiveMLStrategy(IStrategy):
 
     # Internal state - ML models
     _best_params = None
-    _quality_model_data = None  # PRO: quality model
+    _quality_model_data = None  # Quality gate model
     _shadow_model_data = None  # Shadow: candidate model (log-only)
-    _discipline_params = None  # PRO: discipline params
-    _anti_patterns = None  # PRO v4: learned anti-patterns
+    _discipline_params = None  # Discipline params (cooldown, limits)
+    _anti_patterns = None  # Anti-patterns (learned from mistakes)
     _last_model_load = 0
     _MODEL_RELOAD_INTERVAL = 300
 
-    # PRO: Discipline tracking (reset on strategy reload)
+    # Discipline tracking (reset on strategy reload)
     _consecutive_losses = 0
     _daily_pnl = 0.0
     _daily_trades = 0
@@ -188,7 +191,7 @@ class AdaptiveMLStrategy(IStrategy):
             except Exception:
                 self._best_params = None
 
-        # PRO: Load quality model
+        # Load quality model
         if QUALITY_MODEL_PATH.exists():
             try:
                 with open(QUALITY_MODEL_PATH, "rb") as f:
@@ -196,7 +199,7 @@ class AdaptiveMLStrategy(IStrategy):
             except Exception:
                 self._quality_model_data = None
 
-        # PRO: Load discipline params
+        # Load discipline params
         if DISCIPLINE_PATH.exists():
             try:
                 with open(DISCIPLINE_PATH, "r") as f:
@@ -204,7 +207,7 @@ class AdaptiveMLStrategy(IStrategy):
             except Exception:
                 self._discipline_params = None
 
-        # PRO v4: Load anti-patterns (learned from mistakes)
+        # Load anti-patterns (learned from mistakes)
         if ANTI_PATTERN_PATH.exists():
             try:
                 with open(ANTI_PATTERN_PATH, "r") as f:
@@ -754,7 +757,7 @@ class AdaptiveMLStrategy(IStrategy):
         **kwargs,
     ):
         """
-        PRO: Kelly Criterion position sizing with discipline.
+        Kelly Criterion position sizing with discipline.
         f* = (bp - q) / b, using fractional Kelly (25%).
         Blended with regime confidence and anti-martingale.
         """
@@ -765,7 +768,7 @@ class AdaptiveMLStrategy(IStrategy):
                 regime = int(entry_tag.split("_r")[1][0])
                 params = self._get_regime_params(regime)
 
-                # PRO: Kelly fraction from optimizer
+                # Kelly fraction from optimizer
                 kelly = params.get("kelly_fraction", 0)
                 regime_c = params.get("c", c)
                 if kelly > 0.02:
@@ -782,11 +785,11 @@ class AdaptiveMLStrategy(IStrategy):
                 size_adj = params.get("size_adj", 1.0)
                 c = c * size_adj
 
-                # PRO: Not robust in walk-forward → reduce
+                # Not robust in walk-forward → reduce
                 if not params.get("is_robust", True):
                     c *= 0.7  # cautious, not blocked
 
-                # PRO: Anti-martingale (reduce after losses)
+                # Anti-martingale (reduce after losses)
                 if self._consecutive_losses >= 2:
                     reduction = max(0.3, 1.0 - self._consecutive_losses * 0.15)
                     c *= reduction
@@ -806,45 +809,72 @@ class AdaptiveMLStrategy(IStrategy):
         c = max(0.05, min(c, 0.80))
         return proposed_stake * c
 
-    # ─── Trade Entry Confirmation (PRO Discipline) ────────
+    # ─── Trade Entry Confirmation (Discipline Gate) ─────
 
-    def _log_rejection(self, pair, side, reason, current_time,
-                       features=None):
+    def _log_decision(self, pair, side, decision, reason, current_time,
+                      rate=None, features=None, edge_score=None,
+                      quality_threshold=None):
         """
-        Decision Journal v2 — persist trade rejection with context.
-        Each entry now includes: feature snapshot, model version,
-        risk state so operators can diagnose why the bot didn't trade.
+        Decision Journal v4 — append-only JSONL with every accept and reject.
+
+        Writes to:
+          1. decision_journal.jsonl  (append-only, durable — never truncated)
+          2. rejection_journal.json  (last 50, backward-compat for dashboard API)
+
+        Every entry includes: decision (accept/reject), reason, edge score,
+        entry rate (for counterfactual: what happened if we didn't trade),
+        feature snapshot, risk state, model version.
         """
         entry = {
             "time": str(current_time),
             "pair": pair,
             "side": side,
+            "decision": decision,  # "accept" or "reject"
             "reason": reason,
-            # v2: risk state
+            "rate": round(float(rate), 8) if rate is not None else None,
+            "edge_score": round(float(edge_score), 4) if edge_score is not None else None,
+            "quality_threshold": round(float(quality_threshold), 4) if quality_threshold is not None else None,
+            # Risk state
             "risk": {
                 "consecutive_losses": self._consecutive_losses,
                 "daily_pnl": round(self._daily_pnl, 6),
                 "daily_trades": self._daily_trades,
             },
-            # v2: model version (best_params load timestamp)
+            # Model version (best_params load timestamp)
             "model_ts": self._last_model_load,
         }
-        # v3: feature snapshot + regime + direction_score
+        # Feature snapshot + regime + direction_score
         if features is not None:
             snap = self._snap_features(features)
             entry["features"] = snap
             entry["regime"] = snap.get("regime")
             entry["direction_score"] = snap.get("direction_score")
 
-        self._rejection_log.append(entry)
-        if len(self._rejection_log) > self._MAX_REJECTIONS:
-            self._rejection_log = self._rejection_log[-self._MAX_REJECTIONS :]
-        # Persist to disk (async-safe: overwrite full file)
+        # 1. Append-only JSONL (durable — never truncated)
         try:
-            with open(REJECTION_LOG_PATH, "w") as f:
-                json.dump(self._rejection_log[-50:], f, indent=1)
+            with open(DECISION_JOURNAL_PATH, "a") as f:
+                f.write(json.dumps(entry) + "\n")
         except Exception:
             pass
+
+        # 2. Backward-compat: keep last 50 rejections in old format
+        if decision == "reject":
+            self._rejection_log.append(entry)
+            if len(self._rejection_log) > self._MAX_REJECTIONS:
+                self._rejection_log = self._rejection_log[-self._MAX_REJECTIONS:]
+            try:
+                with open(REJECTION_LOG_PATH, "w") as f:
+                    json.dump(self._rejection_log[-50:], f, indent=1)
+            except Exception:
+                pass
+
+    def _log_rejection(self, pair, side, reason, current_time,
+                       features=None, rate=None, edge_score=None):
+        """Backward-compat wrapper → _log_decision(decision='reject')."""
+        self._log_decision(
+            pair, side, "reject", reason, current_time,
+            rate=rate, features=features, edge_score=edge_score,
+        )
 
     def _snap_features(self, row):
         """Extract feature snapshot from a dataframe row."""
@@ -1010,9 +1040,10 @@ class AdaptiveMLStrategy(IStrategy):
         **kwargs,
     ):
         """
-        PRO discipline gate with decision journal.
-        Every rejection is persisted so operators can see
-        why the bot is not trading.
+        Discipline gate with Decision Journal v4.
+        Every decision (accept AND reject) is persisted
+        to append-only JSONL so operators can audit
+        why the bot did or didn't trade.
         """
         # KILL SWITCH: if file exists, block all entries
         if KILL_SWITCH_PATH.exists():
@@ -1046,7 +1077,7 @@ class AdaptiveMLStrategy(IStrategy):
                 except Exception:
                     pass
 
-        # PRO: Reset daily counters
+        # Reset daily counters
         if hasattr(current_time, "date"):
             today = current_time.date()
         else:
@@ -1057,7 +1088,7 @@ class AdaptiveMLStrategy(IStrategy):
             self._daily_trades = 0
             self._last_trade_date = today
 
-        # PRO: Cooldown after consecutive losses
+        # Cooldown after consecutive losses
         regime = 2  # default
         if entry_tag and "_r" in entry_tag:
             try:
@@ -1077,7 +1108,7 @@ class AdaptiveMLStrategy(IStrategy):
             )
             return False
 
-        # PRO: Daily loss limit
+        # Daily loss limit
         daily_limit = params.get("daily_loss_limit", 0.02)
         if self._daily_pnl < -daily_limit:
             self._log_rejection(
@@ -1085,7 +1116,7 @@ class AdaptiveMLStrategy(IStrategy):
             )
             return False
 
-        # PRO: Equity curve circuit breaker
+        # Equity curve circuit breaker
         if len(self._recent_results) >= 20:
             recent = self._recent_results[-20:]
             if sum(recent) < -0.05:
@@ -1190,6 +1221,8 @@ class AdaptiveMLStrategy(IStrategy):
                 pass
 
         # Quality model gate (session-direction-regime prior)
+        _edge_score = None  # track for decision journal
+        _quality_threshold = None
         if self._quality_model_data is not None:
             try:
                 qm = self._quality_model_data
@@ -1199,6 +1232,7 @@ class AdaptiveMLStrategy(IStrategy):
                 # Use p25 threshold for paper trading to allow more signals
                 # through; in live mode, switch to min_quality
                 min_quality = thresholds.get("p25", thresholds.get("min_quality", 0.5))
+                _quality_threshold = min_quality
 
                 if model and scaler and hasattr(current_time, "hour"):
                     leverage = float(
@@ -1217,6 +1251,7 @@ class AdaptiveMLStrategy(IStrategy):
                     )
                     scaled = scaler.transform(features)
                     quality = model.predict_proba(scaled)[0][1]
+                    _edge_score = quality
 
                     if quality < min_quality:
                         self._log_rejection(
@@ -1225,6 +1260,8 @@ class AdaptiveMLStrategy(IStrategy):
                             f"quality_model_{quality:.3f}<{min_quality:.3f}",
                             current_time,
                             features=last,
+                            rate=rate,
+                            edge_score=quality,
                         )
                         return False
             except Exception:
@@ -1253,6 +1290,14 @@ class AdaptiveMLStrategy(IStrategy):
             current_time, side, regime, kwargs,
         )
 
+        # Decision Journal v4: log ACCEPTANCE with full context
+        self._log_decision(
+            pair, side, "accept", entry_tag or "entry",
+            current_time, rate=rate, features=last,
+            edge_score=_edge_score,
+            quality_threshold=_quality_threshold,
+        )
+
         # Trade replay: log accepted entry with full context
         self._log_trade_entry(
             pair, side, entry_tag, regime, rate, current_time, last,
@@ -1273,7 +1318,7 @@ class AdaptiveMLStrategy(IStrategy):
         **kwargs,
     ):
         """
-        PRO: MFE-calibrated dynamic stoploss.
+        MFE-calibrated dynamic stoploss.
         Phase 1: Base SL (give trade room to develop)
         Phase 2: Breakeven lock (protect capital after decent move)
         Phase 3: Trailing (lock in gains progressively)
@@ -1346,7 +1391,7 @@ class AdaptiveMLStrategy(IStrategy):
 
         return None
 
-    # ─── PRO: Trade Exit Tracking (Discipline) ───────────
+    # ─── Trade Exit Tracking (Discipline) ─────────────
     # confirm_trade_exit updates discipline trackers.
     # Uses trade.calc_profit_ratio for profit tracking.
 
@@ -1363,7 +1408,7 @@ class AdaptiveMLStrategy(IStrategy):
         **kwargs,
     ):
         """
-        PRO: Track trade results for discipline systems.
+        Track trade results for discipline systems.
         Updates consecutive losses, daily PnL, equity curve.
         """
         try:

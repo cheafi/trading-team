@@ -212,22 +212,98 @@ export function useRejections(limit = 50) {
   );
 }
 
+// ─── Decision Journal v4 ────────────────────────────────
+
+export interface DecisionEntry {
+  time: string;
+  pair: string;
+  side: string;
+  decision: "accept" | "reject";
+  reason: string;
+  rate: number | null;
+  edge_score: number | null;
+  quality_threshold: number | null;
+  regime: number | string | null;
+  direction_score: number | null;
+  risk?: {
+    consecutive_losses: number;
+    daily_pnl: number;
+    daily_trades: number;
+  };
+  model_ts?: number;
+  features?: Record<string, number>;
+}
+
+export interface DecisionJournalResponse {
+  total: number;
+  totalAccept: number;
+  totalReject: number;
+  acceptRate: number;
+  entries: DecisionEntry[];
+}
+
+export function useDecisionJournal(filters?: {
+  pair?: string;
+  decision?: string;
+  side?: string;
+  reason?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.pair) params.set("pair", filters.pair);
+  if (filters?.decision) params.set("decision", filters.decision);
+  if (filters?.side) params.set("side", filters.side);
+  if (filters?.reason) params.set("reason", filters.reason);
+  if (filters?.from) params.set("from", filters.from);
+  if (filters?.to) params.set("to", filters.to);
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return useSWR<DecisionJournalResponse>(
+    `/api/diagnostics/decisions${qs ? `?${qs}` : ""}`,
+    fetcher,
+    {
+      refreshInterval: 30000,
+      fallbackData: { total: 0, totalAccept: 0, totalReject: 0, acceptRate: 0, entries: [] },
+    }
+  );
+}
+
 // ─── Risk Cockpit ────────────────────────────────────────
 
 export interface RiskCockpitData {
   open_trades: number;
   gross_exposure: number;
+  net_exposure: number;
   pair_exposure: Record<string, number>;
   max_concentration: number;
   worst_case_loss: number;
   max_drawdown: number;
   max_drawdown_abs: number;
+  leverage: { max: number; avg: number };
+  dd_guard: {
+    daily_pnl: number;
+    daily_pnl_pct: number;
+    daily_trades: number;
+    daily_limit: number;
+    daily_breached: boolean;
+    weekly_pnl: number;
+    weekly_pnl_pct: number;
+    weekly_trades: number;
+    weekly_limit: number;
+    weekly_breached: boolean;
+  };
   model_drift: {
     status: string;
     drifted: boolean;
     active_version?: string;
     active_since?: string;
     params_hash?: string;
+    feature_hash?: string;
+    data_hash?: string;
+    training_window?: { start: string; end: string; n_trades: number };
+    validation_window?: { start: string; end: string; n_trades: number };
   };
 }
 

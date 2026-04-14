@@ -990,8 +990,63 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // ─── Decision Journal v4 API ───────────────────────────────
+    // Append-only JSONL with every accept+reject decision.
+    // Query: ?pair=ETH&decision=reject&from=2026-04-01&to=2026-04-15&reason=quality&limit=200
+    if (url.pathname === "/api/diagnostics/decisions") {
+      try {
+        const fs = await import("node:fs/promises");
+        const raw = await fs.readFile(
+          "/freqtrade/user_data/ml_models/decision_journal.jsonl",
+          "utf8",
+        );
+        const lines = raw.trim().split("\n").filter(Boolean);
+        let entries = lines.map((l) => {
+          try { return JSON.parse(l); } catch { return null; }
+        }).filter(Boolean);
+
+        // Filters
+        const pairFilter = url.searchParams.get("pair");
+        const decisionFilter = url.searchParams.get("decision"); // accept|reject
+        const sideFilter = url.searchParams.get("side"); // long|short
+        const reasonFilter = url.searchParams.get("reason"); // substring match
+        const fromDate = url.searchParams.get("from"); // YYYY-MM-DD
+        const toDate = url.searchParams.get("to"); // YYYY-MM-DD
+        const regimeFilter = url.searchParams.get("regime"); // 0|1|2|3
+
+        if (pairFilter) entries = entries.filter((e) => e.pair?.includes(pairFilter.toUpperCase()));
+        if (decisionFilter) entries = entries.filter((e) => e.decision === decisionFilter);
+        if (sideFilter) entries = entries.filter((e) => e.side === sideFilter);
+        if (reasonFilter) entries = entries.filter((e) => e.reason?.includes(reasonFilter));
+        if (fromDate) entries = entries.filter((e) => (e.time || "").slice(0, 10) >= fromDate);
+        if (toDate) entries = entries.filter((e) => (e.time || "").slice(0, 10) <= toDate);
+        if (regimeFilter) entries = entries.filter((e) => String(e.regime) === regimeFilter || String(e.features?.regime) === regimeFilter);
+
+        const limit = parseInt(url.searchParams.get("limit") || "200", 10);
+        const recent = entries.slice(-limit).reverse();
+
+        // Summary stats
+        const totalAccept = entries.filter((e) => e.decision === "accept").length;
+        const totalReject = entries.filter((e) => e.decision === "reject").length;
+
+        res.writeHead(200);
+        res.end(JSON.stringify({
+          total: entries.length,
+          totalAccept,
+          totalReject,
+          acceptRate: entries.length > 0 ? +(totalAccept / entries.length).toFixed(4) : 0,
+          entries: recent,
+        }));
+      } catch (err) {
+        // File may not exist yet — return empty
+        res.writeHead(200);
+        res.end(JSON.stringify({ total: 0, totalAccept: 0, totalReject: 0, acceptRate: 0, entries: [] }));
+      }
+      return;
+    }
+
     // ─── Diagnostics API ───────────────────────────────────────
-    // Rejection journal — why the bot didn't trade
+    // Rejection journal — why the bot didn't trade (backward compat)
     if (url.pathname === "/api/diagnostics/rejections") {
       try {
         const fs = await import("node:fs/promises");
@@ -1148,10 +1203,11 @@ print('OK')
     if (url.pathname === "/api/risk/cockpit") {
       try {
         // Aggregate risk metrics from FT API
-        const [status, profit, performance] = await Promise.all([
+        const [status, profit, performance, trades] = await Promise.all([
           ftApi("/status"),
           ftApi("/profit"),
           ftApi("/performance"),
+          ftApi("/trades?limit=100"),
         ]);
 
         const openTrades = Array.isArray(status) ? status : [];
@@ -1160,15 +1216,75 @@ print('OK')
           0,
         );
         const pairExposure = {};
+        let netExposure = 0;
         for (const t of openTrades) {
           const p = t.pair || "unknown";
-          pairExposure[p] = (pairExposure[p] || 0) + Math.abs(t.stake_amount || 0);
+          const amt = Math.abs(t.stake_amount || 0);
+          pairExposure[p] = (pairExposure[p] || 0) + amt;
+          // Net: shorts are negative, longs positive
+          netExposure += t.is_short ? -amt : amt;
         }
         const maxConcentration = Math.max(0, ...Object.values(pairExposure));
         const worstCase = openTrades.reduce(
           (sum, t) => sum + Math.abs(t.stake_amount || 0) * Math.abs(t.stoploss || 0.025),
           0,
         );
+
+        // Leverage readout from open trades
+        const leverages = openTrades
+          .map((t) => t.leverage || 1)
+          .filter((l) => l > 0);
+        const maxLeverage = leverages.length > 0 ? Math.max(...leverages) : 0;
+        const avgLeverage = leverages.length > 0
+          ? leverages.reduce((a, b) => a + b, 0) / leverages.length
+          : 0;
+
+        // Daily/weekly P&L from closed trades
+        const closedTrades = Array.isArray(trades?.trades)
+          ? trades.trades.filter((t) => t.close_date)
+          : [];
+        const now = new Date();
+        const todayStr = now.toISOString().slice(0, 10);
+        const weekAgo = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+
+        let dailyPnl = 0;
+        let weeklyPnl = 0;
+        let dailyTrades = 0;
+        let weeklyTrades = 0;
+        for (const t of closedTrades) {
+          const closeDate = (t.close_date || "").slice(0, 10);
+          const pnl = t.profit_abs || 0;
+          if (closeDate >= todayStr) {
+            dailyPnl += pnl;
+            dailyTrades++;
+          }
+          if (closeDate >= weekAgo) {
+            weeklyPnl += pnl;
+            weeklyTrades++;
+          }
+        }
+
+        // Deterministic daily/weekly DD guard status
+        const dailyDdLimit = -0.02; // -2% daily hard limit
+        const weeklyDdLimit = -0.05; // -5% weekly hard limit
+        const balance = profit?.profit_all_coin
+          ? 1000 + (profit.profit_all_coin || 0) // approximate
+          : 1000;
+        const dailyDdPct = balance > 0 ? dailyPnl / balance : 0;
+        const weeklyDdPct = balance > 0 ? weeklyPnl / balance : 0;
+
+        const ddGuard = {
+          daily_pnl: dailyPnl,
+          daily_pnl_pct: dailyDdPct,
+          daily_trades: dailyTrades,
+          daily_limit: dailyDdLimit,
+          daily_breached: dailyDdPct < dailyDdLimit,
+          weekly_pnl: weeklyPnl,
+          weekly_pnl_pct: weeklyDdPct,
+          weekly_trades: weeklyTrades,
+          weekly_limit: weeklyDdLimit,
+          weekly_breached: weeklyDdPct < weeklyDdLimit,
+        };
 
         // Model drift check
         let drift = { status: "unknown", drifted: false };
@@ -1184,6 +1300,10 @@ print('OK')
             active_version: reg.active,
             active_since: active?.timestamp,
             params_hash: active?.params_hash,
+            feature_hash: active?.feature_hash,
+            data_hash: active?.data_hash,
+            training_window: active?.training_window,
+            validation_window: active?.validation_window,
           };
         } catch {
           // Registry doesn't exist yet
@@ -1194,11 +1314,14 @@ print('OK')
           JSON.stringify({
             open_trades: openTrades.length,
             gross_exposure: totalExposure,
+            net_exposure: netExposure,
             pair_exposure: pairExposure,
             max_concentration: maxConcentration,
             worst_case_loss: worstCase,
             max_drawdown: profit?.max_drawdown || 0,
             max_drawdown_abs: profit?.max_drawdown_abs || 0,
+            leverage: { max: maxLeverage, avg: avgLeverage },
+            dd_guard: ddGuard,
             model_drift: drift,
           }),
         );

@@ -296,9 +296,9 @@ async function cmdHelp(msg) {
         inline: false,
       },
       {
-        name: "\u2501\u2501  \ud83e\udde0 Intelligence  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501",
+        name: "\u2501\u2501  \ud83e\udde0 System State  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501",
         value: [
-          "`!ml`               \u2014 ML engine & regime params",
+          "`!ml`               \u2014 ML quality gate & params",
           "`!agents`  (`!team`) \u2014 Agent team status",
           "`!strategies`       \u2014 Strategy ranking table",
           "`!findings`         \u2014 Recent agent reports",
@@ -454,7 +454,7 @@ function buildML(ml, history) {
 
   const e = new EmbedBuilder()
     .setColor(C.ml)
-    .setTitle("\ud83e\udde0  ML Engine")
+    .setTitle("\ud83e\udde0  ML Quality Gate")
     .setDescription("> Only **R2 (Ranging, short-only)** is active in production.")
     .addFields(
       { name: "Regime", value: `**${rLabel}**`, inline: true },

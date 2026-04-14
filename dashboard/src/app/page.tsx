@@ -48,18 +48,18 @@ export default function Home() {
         <BacktestPanel />
       </section>
 
-      {/* ML Adaptive Engine */}
+      {/* ML Quality Gate */}
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-          <span className="text-xl">🧠</span> ML Adaptive Engine
+          <span className="text-xl">🧠</span> ML Quality Gate
         </h2>
         <MLPanel />
       </section>
 
-      {/* Diagnostics: rejection journal with breakdowns */}
+      {/* Decision Journal: unified accept/reject log with search */}
       <section className="mb-6">
         <h2 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-          <span className="text-xl">🔍</span> Operator Diagnostics
+          <span className="text-xl">📋</span> Decision Journal
         </h2>
         <DiagnosticsPanel />
       </section>

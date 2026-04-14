@@ -73,6 +73,27 @@ class ModelRegistry:
         content = params_path.read_bytes()
         return hashlib.sha256(content).hexdigest()[:12]
 
+    def _compute_feature_hash(self):
+        """SHA-256 hash of quality_model.pkl for feature/model drift."""
+        model_path = self.model_dir / "quality_model.pkl"
+        if not model_path.exists():
+            return None
+        content = model_path.read_bytes()
+        return hashlib.sha256(content).hexdigest()[:12]
+
+    def _compute_data_hash(self):
+        """SHA-256 hash of all backtest result meta files for data provenance."""
+        bt_dir = self.model_dir.parent / "backtest_results"
+        if not bt_dir.exists():
+            return None
+        meta_files = sorted(bt_dir.glob("*.meta.json"))
+        if not meta_files:
+            return None
+        h = hashlib.sha256()
+        for f in meta_files[-10:]:  # last 10 backtest results
+            h.update(f.read_bytes())
+        return h.hexdigest()[:12]
+
     def _extract_oos_metrics(self):
         """Extract OOS metrics from the most recent training log entry."""
         log_path = self.model_dir / "training_log.json"
@@ -128,6 +149,8 @@ class ModelRegistry:
 
         # Build version metadata
         params_hash = self._compute_params_hash()
+        feature_hash = self._compute_feature_hash()
+        data_hash = self._compute_data_hash()
         oos_metrics = self._extract_oos_metrics()
 
         registry = self._load_registry()
@@ -153,9 +176,12 @@ class ModelRegistry:
             "version_id": version_id,
             "timestamp": now.isoformat() + "Z",
             "params_hash": params_hash,
+            "feature_hash": feature_hash,
+            "data_hash": data_hash,
             "artifacts": artifacts_saved,
             "oos_metrics": oos_metrics,
             "drift": drift,
+            "feature_names": ["hour", "weekday", "is_short", "regime", "leverage"],
             **(extra_metadata or {}),
         }
 

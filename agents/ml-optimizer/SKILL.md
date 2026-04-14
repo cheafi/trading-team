@@ -10,17 +10,20 @@ Every 2 hours
 ## Pipeline
 1. Load latest backtest results from `/freqtrade/user_data/backtest_results/`
 2. Extract per-trade features (duration, direction, profit, indicators)
-3. Train GradientBoosting model for regime classification
+3. Train 5-feature quality model (hour, weekday, is_short, regime, leverage)
 4. For each regime, find optimal c, e, ROI, SL by analyzing win patterns
-5. Save model + best_params.json to `/freqtrade/user_data/ml_models/`
-6. AdaptiveMLStrategy hot-reloads new params on next candle
+5. Save quality_model.pkl + best_params.json to `/freqtrade/user_data/ml_models/`
+6. AdaptiveMLStrategy hot-reloads new params every 300s
+
+> **Note:** Regime detection is rule-based (ADX/EMA/ATR/BB thresholds), not ML-driven.
+> The regime classifier was removed in iteration 14.
 
 ## Key Metrics Tracked
 - **Win Rate improvement** per training cycle
 - **Sharpe Ratio** per strategy per regime
 - **Profit Factor** (gross profit / gross loss)
 - **Max Drawdown** adaptation (dynamic stoploss)
-- **Regime detection accuracy** (cross-validation score)
+- **Quality model AUC** (cross-validation score)
 
 ## Output to Redis
 ```json
@@ -36,6 +39,8 @@ Every 2 hours
 ```
 
 ## Files Written
-- `ml_models/regime_model.pkl` — Trained regime classifier
+- `ml_models/quality_model.pkl` — 5-feature trade quality gate (GradientBoosting)
 - `ml_models/best_params.json` — Optimal parameters per regime
+- `ml_models/discipline_params.json` — Cooldown + daily loss limit
+- `ml_models/anti_patterns.json` — Toxic hours/days learned from losses
 - `ml_models/training_log.json` — Training history for dashboard

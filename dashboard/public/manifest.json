@@ -1,7 +1,7 @@
 {
-  "name": "DanDan Trading Team",
-  "short_name": "DanDan",
-  "description": "Multi-agent algo trading dashboard",
+  "name": "CC Trading Dashboard",
+  "short_name": "CC",
+  "description": "6-pair USDT futures short specialist — paper trading",
   "icons": [],
   "start_url": "/",
   "display": "standalone",

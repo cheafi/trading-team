@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CC | AI Trading Dashboard",
-  description: "Multi-agent algo trading dashboard — Multi-Pair Futures",
+  title: "CC | Algo Trading Dashboard",
+  description: "6-pair USDT futures short specialist — R2 regime, 5m timeframe, paper trading",
 };
 
 export default function RootLayout({

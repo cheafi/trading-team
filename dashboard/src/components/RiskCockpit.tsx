@@ -81,9 +81,10 @@ export function RiskCockpit() {
           value={`$${risk.gross_exposure.toFixed(2)}`}
         />
         <Stat
-          label="Max Concentration"
-          value={`$${risk.max_concentration.toFixed(2)}`}
-          sub="single pair"
+          label="Net Exposure"
+          value={`$${(risk.net_exposure || 0).toFixed(2)}`}
+          color={Math.abs(risk.net_exposure || 0) > 500 ? "text-amber-400" : "text-white"}
+          sub={risk.net_exposure < 0 ? "net short" : risk.net_exposure > 0 ? "net long" : "flat"}
         />
         <Stat
           label="Worst-Case Loss"
@@ -93,7 +94,7 @@ export function RiskCockpit() {
         />
       </div>
 
-      {/* Drawdown + Drift row */}
+      {/* DD Guard + Leverage row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Stat
           label="Max Drawdown"
@@ -101,6 +102,59 @@ export function RiskCockpit() {
           color={ddColor}
           sub={`$${(risk.max_drawdown_abs || 0).toFixed(2)}`}
         />
+        <Stat
+          label="Daily P&L"
+          value={risk.dd_guard
+            ? `${risk.dd_guard.daily_pnl >= 0 ? "+" : ""}$${risk.dd_guard.daily_pnl.toFixed(2)}`
+            : "—"}
+          color={
+            risk.dd_guard?.daily_breached ? "text-red-400"
+            : (risk.dd_guard?.daily_pnl || 0) < 0 ? "text-amber-400"
+            : "text-emerald-400"
+          }
+          sub={risk.dd_guard
+            ? `${risk.dd_guard.daily_trades} trades · limit ${(risk.dd_guard.daily_limit * 100).toFixed(0)}%`
+            : ""}
+        />
+        <Stat
+          label="Weekly P&L"
+          value={risk.dd_guard
+            ? `${risk.dd_guard.weekly_pnl >= 0 ? "+" : ""}$${risk.dd_guard.weekly_pnl.toFixed(2)}`
+            : "—"}
+          color={
+            risk.dd_guard?.weekly_breached ? "text-red-400"
+            : (risk.dd_guard?.weekly_pnl || 0) < 0 ? "text-amber-400"
+            : "text-emerald-400"
+          }
+          sub={risk.dd_guard
+            ? `${risk.dd_guard.weekly_trades} trades · limit ${(risk.dd_guard.weekly_limit * 100).toFixed(0)}%`
+            : ""}
+        />
+        <Stat
+          label="Leverage"
+          value={risk.leverage
+            ? risk.leverage.max > 0 ? `${risk.leverage.max}×` : "—"
+            : "—"}
+          color={risk.leverage?.max > 5 ? "text-amber-400" : "text-white"}
+          sub={risk.leverage?.avg > 0 ? `avg ${risk.leverage.avg.toFixed(1)}×` : ""}
+        />
+      </div>
+
+      {/* DD Guard breach warnings */}
+      {(risk.dd_guard?.daily_breached || risk.dd_guard?.weekly_breached) && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+          <span className="text-red-400 text-sm font-semibold">
+            ⚠️ DD Guard Breached
+          </span>
+          <div className="text-red-300 text-xs mt-1">
+            {risk.dd_guard?.daily_breached && <div>Daily loss limit breached ({(risk.dd_guard.daily_pnl_pct * 100).toFixed(2)}% &lt; {(risk.dd_guard.daily_limit * 100).toFixed(0)}%)</div>}
+            {risk.dd_guard?.weekly_breached && <div>Weekly loss limit breached ({(risk.dd_guard.weekly_pnl_pct * 100).toFixed(2)}% &lt; {(risk.dd_guard.weekly_limit * 100).toFixed(0)}%)</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Model + Drift row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Stat
           label="Model Drift"
           value={`${driftIcon} ${driftStatus}`}
@@ -110,6 +164,11 @@ export function RiskCockpit() {
           label="Active Model"
           value={activeVersion ? activeVersion.slice(0, 15) : "—"}
           sub={activeEntry?.params_hash || ""}
+        />
+        <Stat
+          label="Max Concentration"
+          value={`$${risk.max_concentration.toFixed(2)}`}
+          sub="single pair"
         />
         <Stat
           label="Model Versions"

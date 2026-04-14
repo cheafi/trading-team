@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-ML Optimizer - CC Trading Team (v3 PRO)
+ML Optimizer - CC Trading Team (v3)
 =============================================
-Professional quant-grade self-learning pipeline:
+Self-learning pipeline for parameter optimization:
 
   CORE (v2):
   1. Loads backtest results (JSON/ZIP from Freqtrade)
@@ -12,14 +12,17 @@ Professional quant-grade self-learning pipeline:
   5. Per-regime best strategy + dynamically tuned params
   6. Performance feedback loop with rolling metrics
 
-  PRO (v3):
+  EXTENSIONS (v3):
   7.  MFE/MAE analysis → calibrate SL/TP from actual trade excursions
   8.  Kelly criterion → mathematically optimal position sizing
   9.  Walk-forward validation → train/test split to detect overfitting
   10. Monte Carlo simulation → confidence intervals & probability of ruin
-  11. Trade quality model → score each setup 0-100 before entry
+  11. Trade quality model → 5-feature gate (hour, weekday, is_short, regime, leverage)
   12. Equity curve analysis → detect when to pause trading
   13. Fee-aware edge calculation → minimum edge filter
+
+  NOTE: Regime detection is rule-based (ADX/EMA/ATR/BB thresholds).
+  The regime classifier was removed in iteration 14.
 
 Run:  python ml_optimizer.py [--retrain]
 """
@@ -1099,10 +1102,37 @@ def main():
     print("-" * 70)
     try:
         registry = ModelRegistry(MODEL_DIR)
+
+        # Compute training/validation windows from loaded trades
+        all_open_dates = []
+        for trades in strat_trades.values():
+            for t in trades:
+                od = t.get("open_date", "")
+                if od:
+                    all_open_dates.append(str(od)[:10])
+        all_open_dates.sort()
+        training_window = None
+        validation_window = None
+        if all_open_dates:
+            n = len(all_open_dates)
+            split_idx = int(n * 0.8)
+            training_window = {
+                "start": all_open_dates[0],
+                "end": all_open_dates[split_idx - 1] if split_idx > 0 else all_open_dates[0],
+                "n_trades": split_idx,
+            }
+            validation_window = {
+                "start": all_open_dates[split_idx] if split_idx < n else all_open_dates[-1],
+                "end": all_open_dates[-1],
+                "n_trades": n - split_idx,
+            }
+
         version_id = registry.register(extra_metadata={
             "total_trades": total,
             "strategies": list(strat_trades.keys()),
             "trigger": "retrain" if args.retrain else "auto",
+            "training_window": training_window,
+            "validation_window": validation_window,
         })
         if version_id:
             active = registry.get_active()
@@ -1122,9 +1152,9 @@ def main():
         print("  Warning: Registry failed: {}".format(e))
 
     print("\n" + "=" * 70)
-    print("ML Optimization v4 PRO complete!")
-    print("New: Adaptive scoring, learn-from-mistakes,")
-    print("     anti-pattern detection, toxic hour/day avoidance")
+    print("ML Optimization v4 complete!")
+    print("Adaptive scoring, learn-from-mistakes,")
+    print("anti-pattern detection, toxic hour/day avoidance")
     print("     + v3: MFE/MAE, Kelly, walk-forward, Monte Carlo")
     print("AdaptiveMLStrategy will hot-reload params on next candle.")
     print("=" * 70)
