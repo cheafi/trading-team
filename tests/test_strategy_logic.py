@@ -18,9 +18,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-# Add strategy directory to path so we can import the strategy
-STRATEGY_DIR = Path(__file__).parent.parent / "freqtrade" / "user_data" / "strategies"
-sys.path.insert(0, str(STRATEGY_DIR))
+# conftest.py handles all mocking and path setup — just import directly
+import AdaptiveMLStrategy as mod
+from AdaptiveMLStrategy import AdaptiveMLStrategy
 
 
 # ─── Helpers ────────────────────────────────────────────────────
