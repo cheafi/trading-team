@@ -1,9 +1,12 @@
 "use client";
 
 import { useProfit } from "@/lib/hooks";
+import { EquitySkeleton } from "@/components/Skeleton";
 
 export function EquityMini() {
-  const { data: profit } = useProfit();
+  const { data: profit, isLoading } = useProfit();
+
+  if (isLoading) return <EquitySkeleton />;
 
   // Generate a simple equity curve from available data
   const totalProfit = profit?.profit_all_coin ?? 0;

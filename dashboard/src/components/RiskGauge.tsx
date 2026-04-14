@@ -1,9 +1,12 @@
 "use client";
 
 import { useProfit } from "@/lib/hooks";
+import { RiskGaugeSkeleton } from "@/components/Skeleton";
 
 export function RiskGauge() {
   const { data: profit, isLoading, error } = useProfit();
+
+  if (isLoading) return <RiskGaugeSkeleton />;
 
   const connected = !error && profit !== undefined;
   const dd = (profit?.max_drawdown ?? 0) * 100;

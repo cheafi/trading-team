@@ -966,12 +966,12 @@ def main():
                   sname, kelly, edge["net_edge"],
                   edge["edge_ratio"], emoji))
 
-    # 13. Walk-Forward Validation
+    # 13. Walk-Forward Validation (5-fold expanding window)
     print("\n" + "-" * 70)
-    print("PRO: WALK-FORWARD OUT-OF-SAMPLE VALIDATION")
+    print("PRO: WALK-FORWARD VALIDATION (5-fold expanding window)")
     print("-" * 70)
     for sname, trades in strat_trades.items():
-        wf = walk_forward_validate(trades)
+        wf = walk_forward_validate(trades, n_windows=5)
         if not wf:
             print("  {:<22} (insufficient data)".format(sname))
             continue
@@ -985,8 +985,17 @@ def main():
               "Sharpe={:.2f} PF={:.2f}".format(
                   wf["oos_win_rate"], wf["oos_expectancy"],
                   wf["oos_sharpe"], wf["oos_profit_factor"]))
-        print("    Overfit={:.1f}x  Robustness={:.0%}".format(
-            wf["overfit_ratio"], wf["robustness"]))
+        print("    Overfit={:.1f}x  Robustness={:.0%}  "
+              "Degradation={:+.6f}".format(
+                  wf["overfit_ratio"], wf["robustness"],
+                  wf.get("degradation_slope", 0.0)))
+        # Per-fold details
+        for fold in wf.get("folds", []):
+            print("      Fold {}: train={} test={} "
+                  "OOS_WR={:.1%} OOS_E[r]={:+.6f}".format(
+                      fold["fold"], fold["train_size"],
+                      fold["test_size"], fold["oos_wr"],
+                      fold["oos_exp"]))
 
     # 14. Monte Carlo Simulation
     print("\n" + "-" * 70)

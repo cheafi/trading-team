@@ -1,10 +1,13 @@
 "use client";
 
 import { useProfit, useTrades } from "@/lib/hooks";
+import { PnLSkeleton } from "@/components/Skeleton";
 
 export function PnLCard() {
   const { data: profit, isLoading, error } = useProfit();
   const { data: trades } = useTrades();
+
+  if (isLoading) return <PnLSkeleton />;
 
   const connected = !error && profit !== undefined;
   const totalProfit = profit?.profit_all_coin ?? 0;

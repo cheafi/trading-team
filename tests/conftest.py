@@ -104,6 +104,8 @@ Path.mkdir = _patched_mkdir
 
 # Also patch Path("/freqtrade/...").exists() etc by importing and overriding
 import AdaptiveMLStrategy as _strategy_mod
+import regime_engine as _regime_mod
+import discipline_engine as _discipline_mod
 
 # Now redirect all the path constants to temp
 _strategy_mod.MODEL_DIR = _TMP_MODEL_DIR

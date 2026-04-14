@@ -1,9 +1,12 @@
 "use client";
 
 import { useTrades } from "@/lib/hooks";
+import { TradesSkeleton } from "@/components/Skeleton";
 
 export function TradesPanel() {
-  const { data: trades } = useTrades();
+  const { data: trades, isLoading } = useTrades();
+
+  if (isLoading) return <TradesSkeleton />;
 
   if (!trades || trades.length === 0) {
     return (

@@ -158,27 +158,48 @@ def compute_kelly_fraction(scores, fraction=0.25):
     return round(min(max(f_kelly, 0.02), 0.50), 4)
 
 
-def walk_forward_validate(trades, n_windows=4):
-    """Walk-forward validation: detect overfitting via IS vs OOS comparison."""
+def walk_forward_validate(trades, n_windows=5):
+    """
+    Walk-forward validation with EXPANDING (anchored) windows.
+
+    Uses proper time-series cross-validation:
+      Fold 1: train [0..20%],  test [20%..40%]
+      Fold 2: train [0..40%],  test [40%..60%]
+      Fold 3: train [0..60%],  test [60%..80%]
+      Fold 4: train [0..80%],  test [80%..100%]
+      (for n_windows=4)
+
+    The training set GROWS each fold (anchored start), mimicking
+    real deployment where you retrain on all available history.
+
+    Returns dict with:
+      - Per-fold IS/OOS metrics
+      - Degradation slope (negative = performance decaying over time)
+      - Overfit ratio (IS Sharpe / OOS Sharpe)
+      - Robustness score (fraction of OOS folds profitable)
+    """
     if not trades or len(trades) < 100:
         return None
 
-    sorted_trades = sorted(trades, key=lambda t: t.get("open_timestamp", 0))
+    sorted_trades = sorted(
+        trades, key=lambda t: t.get("open_timestamp", 0)
+    )
     n = len(sorted_trades)
-    window_size = n // (n_windows + 1)
-    if window_size < 20:
+    fold_size = n // (n_windows + 1)
+    if fold_size < 15:
         return None
 
     in_sample_results = []
     out_sample_results = []
+    fold_details = []
 
     for i in range(n_windows):
-        train_start = i * window_size
-        train_end = train_start + window_size
+        # Expanding: train always starts from 0
+        train_end = (i + 1) * fold_size
         test_start = train_end
-        test_end = min(test_start + window_size, n)
+        test_end = min(test_start + fold_size, n)
 
-        train = sorted_trades[train_start:train_end]
+        train = sorted_trades[0:train_end]
         test = sorted_trades[test_start:test_end]
 
         if len(train) < 20 or len(test) < 10:
@@ -190,6 +211,17 @@ def walk_forward_validate(trades, n_windows=4):
         if is_scores and oos_scores:
             in_sample_results.append(is_scores)
             out_sample_results.append(oos_scores)
+            fold_details.append({
+                "fold": i + 1,
+                "train_size": len(train),
+                "test_size": len(test),
+                "is_wr": round(float(is_scores["win_rate"]), 4),
+                "oos_wr": round(float(oos_scores["win_rate"]), 4),
+                "is_exp": round(float(is_scores["expectancy"]), 6),
+                "oos_exp": round(float(oos_scores["expectancy"]), 6),
+                "is_sharpe": round(float(is_scores["sharpe"]), 2),
+                "oos_sharpe": round(float(oos_scores["sharpe"]), 2),
+            })
 
     if not in_sample_results:
         return None
@@ -204,12 +236,26 @@ def walk_forward_validate(trades, n_windows=4):
     oos_pf = np.mean([s["profit_factor"] for s in out_sample_results])
 
     overfit_ratio = (is_sharpe / oos_sharpe) if oos_sharpe > 0 else 10.0
-    oos_profitable = sum(1 for s in out_sample_results if s["expectancy"] > 0)
+    oos_profitable = sum(
+        1 for s in out_sample_results if s["expectancy"] > 0
+    )
     robustness = oos_profitable / len(out_sample_results)
 
+    # Degradation slope: linear fit of OOS expectancy over folds
+    # Negative slope = performance decaying over time (bad sign)
+    oos_exps = [s["expectancy"] for s in out_sample_results]
+    if len(oos_exps) >= 3:
+        x = np.arange(len(oos_exps))
+        coeffs = np.polyfit(x, oos_exps, 1)
+        degradation_slope = float(coeffs[0])
+    else:
+        degradation_slope = 0.0
+
     return {
+        "method": "expanding_window",
         "n_windows": n_windows,
-        "window_size": window_size,
+        "fold_size": fold_size,
+        "folds": fold_details,
         "is_win_rate": round(float(is_wr), 4),
         "oos_win_rate": round(float(oos_wr), 4),
         "is_expectancy": round(float(is_exp), 6),
@@ -219,8 +265,10 @@ def walk_forward_validate(trades, n_windows=4):
         "is_profit_factor": round(float(is_pf), 4),
         "oos_profit_factor": round(float(oos_pf), 4),
         "overfit_ratio": round(float(overfit_ratio), 2),
+        "degradation_slope": round(degradation_slope, 6),
         "robustness": round(float(robustness), 4),
-        "is_robust": robustness >= 0.50 and overfit_ratio < 2.0,
+        "is_robust": robustness >= 0.50 and overfit_ratio < 2.0
+                     and degradation_slope > -0.005,
     }
 
 

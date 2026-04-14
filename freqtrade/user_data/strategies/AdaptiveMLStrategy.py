@@ -52,6 +52,25 @@ from freqtrade.strategy import (
 )
 from pandas import DataFrame
 
+# ─── Modular engines (iter 19 P3 architecture split) ────
+from regime_engine import (
+    detect_regime,
+    get_regime_params,
+    get_current_session,
+    SESSION_HOURS,
+)
+from discipline_engine import (
+    load_discipline_state,
+    save_discipline_state,
+    check_max_drawdown,
+    check_pair_exposure,
+    check_correlation_exposure,
+    snap_features,
+    log_decision,
+    log_trade_entry,
+    log_trade_exit,
+)
+
 logger = logging.getLogger(__name__)
 
 # Path where the ML optimizer writes trained models
@@ -111,14 +130,6 @@ MAX_CORRELATED_SAME_DIRECTION = 2  # max 2 of 3 in same group+direction
 
 # HMAC key file for model integrity verification
 MODEL_HMAC_PATH = MODEL_DIR / "model_hmac.json"
-
-# Session hours (UTC)
-SESSION_HOURS = {
-    "asia": (0, 8),
-    "europe": (8, 14),
-    "us": (14, 22),
-    "overlap": (22, 24),
-}
 
 
 class AdaptiveMLStrategy(IStrategy):
@@ -272,65 +283,28 @@ class AdaptiveMLStrategy(IStrategy):
         self._load_discipline_state()
 
     def _load_discipline_state(self):
-        """
-        Restore volatile discipline counters from disk.
-        Called on first model load; written on every trade exit.
-        Without this, container restart resets consecutive_losses,
-        daily_pnl, daily_trades — letting the bot trade immediately
-        after a loss streak that should have triggered cooldown.
-        """
-        if not DISCIPLINE_STATE_PATH.exists():
-            return
-        try:
-            with open(DISCIPLINE_STATE_PATH, "r") as f:
-                state = json.load(f)
-            # Only restore if same day (daily counters reset at midnight)
-            saved_date = state.get("date")
-            today = datetime.utcnow().strftime("%Y-%m-%d")
-            if saved_date == today:
-                self._consecutive_losses = state.get(
-                    "consecutive_losses", self._consecutive_losses
-                )
-                self._daily_pnl = state.get("daily_pnl", self._daily_pnl)
-                self._daily_trades = state.get("daily_trades", self._daily_trades)
-                self._recent_results = state.get(
-                    "recent_results", self._recent_results
-                )
-                logger.info(
-                    "Discipline state restored: losses=%d pnl=%.4f trades=%d",
-                    self._consecutive_losses,
-                    self._daily_pnl,
-                    self._daily_trades,
-                )
-            else:
-                logger.info(
-                    "Discipline state from %s — new day %s, resetting",
-                    saved_date, today,
-                )
-        except Exception as e:
-            logger.warning("Failed to load discipline state: %s", e)
+        """Restore discipline state from disk — delegates to discipline_engine."""
+        state = {
+            "consecutive_losses": self._consecutive_losses,
+            "daily_pnl": self._daily_pnl,
+            "daily_trades": self._daily_trades,
+            "recent_results": self._recent_results,
+        }
+        state = load_discipline_state(DISCIPLINE_STATE_PATH, state)
+        self._consecutive_losses = state["consecutive_losses"]
+        self._daily_pnl = state["daily_pnl"]
+        self._daily_trades = state["daily_trades"]
+        self._recent_results = state["recent_results"]
 
     def _save_discipline_state(self):
-        """
-        Persist volatile discipline counters to disk.
-        Called after every trade exit and daily counter reset.
-        """
-        try:
-            state = {
-                "date": datetime.utcnow().strftime("%Y-%m-%d"),
-                "consecutive_losses": self._consecutive_losses,
-                "daily_pnl": round(self._daily_pnl, 6),
-                "daily_trades": self._daily_trades,
-                "recent_results": [
-                    round(r, 6)
-                    for r in self._recent_results[-self._MAX_RECENT:]
-                ],
-                "saved_at": datetime.utcnow().isoformat(),
-            }
-            with open(DISCIPLINE_STATE_PATH, "w") as f:
-                json.dump(state, f, indent=1)
-        except Exception as e:
-            logger.warning("Failed to save discipline state: %s", e)
+        """Persist discipline state to disk — delegates to discipline_engine."""
+        state = {
+            "consecutive_losses": self._consecutive_losses,
+            "daily_pnl": self._daily_pnl,
+            "daily_trades": self._daily_trades,
+            "recent_results": self._recent_results,
+        }
+        save_discipline_state(DISCIPLINE_STATE_PATH, state, self._MAX_RECENT)
 
     # ─── Model Integrity ─────────────────────────────────
 
@@ -373,298 +347,35 @@ class AdaptiveMLStrategy(IStrategy):
     # ─── Portfolio Risk Checks ───────────────────────────
 
     def _check_max_drawdown(self, current_time):
-        """
-        Strategy-level max drawdown halt.
-        If equity curve shows > MAX_DD_HALT, auto-enable kill switch.
-        This fires INSIDE the strategy — defense in depth even if
-        agent-runner is down.
-        Returns: 'halt', 'warn', or 'ok'.
-        """
-        if len(self._equity_curve) < 5:
-            return "ok"
-        peak = max(self._equity_curve)
-        current = self._equity_curve[-1]
-        if peak <= 0:
-            return "ok"
-        dd = (peak - current) / abs(peak) if peak != 0 else 0
-        if dd >= MAX_DD_HALT:
-            # Auto-enable kill switch
-            try:
-                KILL_SWITCH_PATH.touch()
-                logger.critical(
-                    "MAX DD HALT: %.1f%% drawdown — kill switch "
-                    "auto-enabled at %s", dd * 100, current_time,
-                )
-            except Exception:
-                pass
-            return "halt"
-        if dd >= MAX_DD_WARN:
-            logger.warning(
-                "DD WARNING: %.1f%% drawdown at %s",
-                dd * 100, current_time,
-            )
-            return "warn"
-        return "ok"
+        """Strategy-level max DD halt — delegates to discipline_engine."""
+        return check_max_drawdown(
+            self._equity_curve, KILL_SWITCH_PATH,
+            current_time, MAX_DD_HALT, MAX_DD_WARN,
+        )
 
     def _check_pair_exposure(self, pair):
-        """
-        Per-pair position limit.
-        Returns True if pair is within limit, False if blocked.
-        """
-        try:
-            open_trades = self.dp.get_trades() if hasattr(self.dp, 'get_trades') else []
-            if not open_trades:
-                # Try via Trade model (Freqtrade internals)
-                from freqtrade.persistence import Trade
-                open_trades = Trade.get_trades_proxy(
-                    is_open=True
-                )
-            count = sum(
-                1 for t in open_trades
-                if getattr(t, 'pair', '') == pair
-            )
-            return count < MAX_POSITIONS_PER_PAIR
-        except Exception:
-            return True  # fail open
+        """Per-pair position limit — delegates to discipline_engine."""
+        return check_pair_exposure(pair, self.dp, MAX_POSITIONS_PER_PAIR)
 
     def _check_correlation_exposure(self, pair, side):
-        """
-        Cross-pair correlation filter.
-        Block entry if too many correlated pairs already open
-        in the same direction.
-        Returns True if allowed, False if blocked.
-        """
-        try:
-            from freqtrade.persistence import Trade
-            open_trades = Trade.get_trades_proxy(is_open=True)
-            if not open_trades:
-                return True
-
-            # Find which group this pair belongs to
-            pair_group = None
-            for group_name, members in CORRELATION_GROUPS.items():
-                if pair in members:
-                    pair_group = group_name
-                    break
-            if pair_group is None:
-                return True  # not in any group
-
-            group_members = CORRELATION_GROUPS[pair_group]
-            same_dir_count = sum(
-                1 for t in open_trades
-                if getattr(t, 'pair', '') in group_members
-                and getattr(t, 'is_short', False) == (side == 'short')
-            )
-            return same_dir_count < MAX_CORRELATED_SAME_DIRECTION
-        except Exception:
-            return True  # fail open
+        """Cross-pair correlation filter — delegates to discipline_engine."""
+        return check_correlation_exposure(
+            pair, side, CORRELATION_GROUPS, MAX_CORRELATED_SAME_DIRECTION,
+        )
 
     # ─── Regime Detection ────────────────────────────────
 
     def _detect_regime(self, dataframe: DataFrame) -> DataFrame:
-        """
-        Classify market into regimes using candle features.
-        Uses rule-based detection (ML model trained on trade features).
-        Enhanced with sub-regime qualifiers.
-        """
-        lookback = int(self.regime_lookback.value)
-        df = dataframe.copy()
-
-        # Trend strength: ADX
-        df["adx"] = ta.ADX(df, timeperiod=lookback)
-
-        # Volatility: ATR normalized
-        df["atr_norm"] = (ta.ATR(df, timeperiod=lookback) / df["close"]) * 100
-
-        # Direction: EMA slope
-        ema = ta.EMA(df, timeperiod=lookback)
-        df["ema_slope"] = (ema - ema.shift(10)) / ema.shift(10) * 100
-
-        # Range indicator: BB width
-        bb = ta.BBANDS(df, timeperiod=lookback)
-        df["bb_width"] = ((bb["upperband"] - bb["lowerband"]) / bb["middleband"]) * 100
-
-        # Volume trend
-        df["vol_ratio"] = df["volume"] / ta.SMA(df["volume"], timeperiod=lookback)
-
-        # Momentum acceleration (rate of change of momentum)
-        df["roc_10"] = ta.ROC(df, timeperiod=10)
-        df["momentum_accel"] = df["roc_10"] - df["roc_10"].shift(5)
-
-        # Volatility trend (expanding or contracting)
-        df["atr_short"] = ta.ATR(df, timeperiod=10)
-        df["atr_long"] = ta.ATR(df, timeperiod=30)
-        df["vol_trend"] = (df["atr_short"] / df["atr_long"] - 1.0) * 100
-
-        # Base regime + sub-regime
-        df["regime"] = self._rule_based_regime(df)
-        df["sub_regime"] = self._classify_sub_regime(df)
-
-        for col in [
-            "regime",
-            "adx",
-            "atr_norm",
-            "ema_slope",
-            "bb_width",
-            "vol_ratio",
-            "momentum_accel",
-            "vol_trend",
-            "sub_regime",
-        ]:
-            dataframe[col] = df[col]
-
-        return dataframe
-
-    def _rule_based_regime(self, df: DataFrame) -> np.ndarray:
-        """Base regime detection (4 classes)."""
-        regimes = np.full(len(df), 2)  # default RANGING
-
-        # Trending up: ADX > 25 and positive slope
-        mask_up = (df["adx"] > 25) & (df["ema_slope"] > 0.1)
-        regimes[mask_up] = 0
-
-        # Trending down: ADX > 25 and negative slope
-        mask_down = (df["adx"] > 25) & (df["ema_slope"] < -0.1)
-        regimes[mask_down] = 1
-
-        # High volatility: ATR_norm > 80th percentile
-        # Use expanding (causal) quantile to avoid lookahead
-        atr_p80 = df["atr_norm"].expanding(min_periods=50).quantile(0.8)
-        mask_vol = df["atr_norm"] > atr_p80
-        regimes[mask_vol] = 3
-
-        return regimes
-
-    def _classify_sub_regime(self, df: DataFrame) -> np.ndarray:
-        """
-        Enhanced sub-regime classification (8 classes).
-        VECTORIZED for performance (was row-by-row loop).
-        0=TREND_UP_STRONG, 1=TREND_UP_WEAK,
-        2=TREND_DOWN_STRONG, 3=TREND_DOWN_WEAK,
-        4=RANGE_TIGHT, 5=RANGE_WIDE,
-        6=VOLATILE_EXPANDING, 7=VOLATILE_CONTRACTING
-        """
-        sub = np.full(len(df), 4)  # default RANGE_TIGHT
-        regime = df["regime"].values if "regime" in df else np.full(len(df), 2)
-
-        ma = df["momentum_accel"].fillna(0).values
-        vt = df["vol_trend"].fillna(0).values
-        bw = df["bb_width"].fillna(1).values
-        # Use expanding (causal) median to avoid lookahead
-        median_bw = (
-            df["bb_width"]
-            .expanding(min_periods=50)
-            .median()
-            .fillna(df["bb_width"].iloc[:50].median())
-            .values
-        )
-
-        # Vectorized conditions — no Python loop
-        sub[regime == 0] = np.where(ma[regime == 0] > 0, 0, 1)  # UP_STRONG / UP_WEAK
-        sub[regime == 1] = np.where(
-            ma[regime == 1] < 0, 2, 3
-        )  # DOWN_STRONG / DOWN_WEAK
-        sub[regime == 2] = np.where(
-            bw[regime == 2] < median_bw[regime == 2], 4, 5
-        )  # TIGHT / WIDE
-        sub[regime == 3] = np.where(
-            vt[regime == 3] > 0, 6, 7
-        )  # EXPANDING / CONTRACTING
-
-        return sub
+        """Classify market into regimes — delegates to regime_engine."""
+        return detect_regime(dataframe, int(self.regime_lookback.value))
 
     def _get_regime_params(self, regime: int) -> dict:
-        """
-        Get optimal params for regime from ML optimizer.
-        Now includes: roi_table, session filter, direction bias,
-        performance feedback adjustments.
-        """
-        if self._best_params and str(regime) in self._best_params:
-            return self._best_params[str(regime)]
-
-        # Defaults calibrated from ML optimizer output.
-        # Updated to match best_params.json reality.
-        defaults = {
-            0: {
-                "c": 0.115,
-                "e": 0.05,
-                "roi_table": {"0": 0.0043, "30": 0.00347, "120": 0.00347},
-                "sl": -0.005,
-                "trailing_offset": 0.003,
-                "strategy": "A31",
-                "entry_adj": 1.0,
-                "size_adj": 1.0,
-                "best_session": None,
-                "worst_session": None,
-                "direction_bias": "neutral",
-                "bias_strength": 0.0,
-                "trail_start": 0.0103,
-                "trail_step": 0.0052,
-            },
-            1: {
-                "c": 0.10,
-                "e": 0.0,
-                "roi_table": {"0": 0.00227, "30": 0.0021, "120": 0.0021},
-                "sl": -0.005,
-                "trailing_offset": 0.0,
-                "strategy": "A51",
-                "entry_adj": 1.0,
-                "size_adj": 1.0,
-                "best_session": None,
-                "worst_session": None,
-                "direction_bias": "neutral",
-                "bias_strength": 0.0,
-                "trail_start": 0.0055,
-                "trail_step": 0.0027,
-            },
-            2: {
-                "c": 0.17,
-                "e": -0.18,
-                "roi_table": {"0": 0.00402, "30": 0.00402, "120": 0.00402},
-                "sl": -0.0064,
-                "trailing_offset": 0.0,
-                "strategy": "A52",
-                "entry_adj": 1.0,
-                "size_adj": 1.0,
-                "best_session": None,
-                "worst_session": None,
-                "direction_bias": "neutral",
-                "bias_strength": 0.0,
-                "trail_start": 0.009,
-                "trail_step": 0.0045,
-            },
-            3: {
-                "c": 0.10,
-                "e": 0.115,
-                "roi_table": {"0": 0.0041, "30": 0.0035, "120": 0.0035},
-                "sl": -0.0058,
-                "trailing_offset": 0.0,
-                "strategy": "A52",
-                "entry_adj": 1.0,
-                "size_adj": 1.0,
-                "best_session": None,
-                "worst_session": None,
-                "direction_bias": "neutral",
-                "bias_strength": 0.0,
-                "trail_start": 0.0063,
-                "trail_step": 0.0032,
-            },
-        }
-        return defaults.get(regime, defaults[2])
+        """Get optimal params for regime — delegates to regime_engine."""
+        return get_regime_params(regime, self._best_params)
 
     def _get_current_session(self, current_time=None):
-        """Determine current trading session from UTC hour."""
-        if current_time is None:
-            hour = datetime.utcnow().hour
-        elif hasattr(current_time, "hour"):
-            hour = current_time.hour
-        else:
-            hour = 12  # default
-
-        for session_name, (h_start, h_end) in SESSION_HOURS.items():
-            if h_start <= hour < h_end:
-                return session_name
-        return "overlap"
+        """Determine current trading session — delegates to regime_engine."""
+        return get_current_session(current_time)
 
     # ─── Multi-Timeframe Indicators ──────────────────────
 
@@ -1048,59 +759,24 @@ class AdaptiveMLStrategy(IStrategy):
     def _log_decision(self, pair, side, decision, reason, current_time,
                       rate=None, features=None, edge_score=None,
                       quality_threshold=None):
-        """
-        Decision Journal v4 — append-only JSONL with every accept and reject.
-
-        Writes to:
-          1. decision_journal.jsonl  (append-only, durable — never truncated)
-          2. rejection_journal.json  (last 50, backward-compat for dashboard API)
-
-        Every entry includes: decision (accept/reject), reason, edge score,
-        entry rate (for counterfactual: what happened if we didn't trade),
-        feature snapshot, risk state, model version.
-        """
-        entry = {
-            "time": str(current_time),
-            "pair": pair,
-            "side": side,
-            "decision": decision,  # "accept" or "reject"
-            "reason": reason,
-            "rate": round(float(rate), 8) if rate is not None else None,
-            "edge_score": round(float(edge_score), 4) if edge_score is not None else None,
-            "quality_threshold": round(float(quality_threshold), 4) if quality_threshold is not None else None,
-            # Risk state
-            "risk": {
-                "consecutive_losses": self._consecutive_losses,
-                "daily_pnl": round(self._daily_pnl, 6),
-                "daily_trades": self._daily_trades,
-            },
-            # Model version (best_params load timestamp)
-            "model_ts": self._last_model_load,
+        """Decision Journal v4 — delegates to discipline_engine."""
+        risk_state = {
+            "consecutive_losses": self._consecutive_losses,
+            "daily_pnl": round(self._daily_pnl, 6),
+            "daily_trades": self._daily_trades,
         }
-        # Feature snapshot + regime + direction_score
-        if features is not None:
-            snap = self._snap_features(features)
-            entry["features"] = snap
-            entry["regime"] = snap.get("regime")
-            entry["direction_score"] = snap.get("direction_score")
-
-        # 1. Append-only JSONL (durable — never truncated)
-        try:
-            with open(DECISION_JOURNAL_PATH, "a") as f:
-                f.write(json.dumps(entry) + "\n")
-        except Exception:
-            pass
-
-        # 2. Backward-compat: keep last 50 rejections in old format
-        if decision == "reject":
-            self._rejection_log.append(entry)
-            if len(self._rejection_log) > self._MAX_REJECTIONS:
-                self._rejection_log = self._rejection_log[-self._MAX_REJECTIONS:]
-            try:
-                with open(REJECTION_LOG_PATH, "w") as f:
-                    json.dump(self._rejection_log[-50:], f, indent=1)
-            except Exception:
-                pass
+        self._rejection_log = log_decision(
+            pair, side, decision, reason, current_time,
+            journal_path=DECISION_JOURNAL_PATH,
+            rejection_log_path=REJECTION_LOG_PATH,
+            rejection_log=self._rejection_log,
+            max_rejections=self._MAX_REJECTIONS,
+            rate=rate, features=features,
+            edge_score=edge_score,
+            quality_threshold=quality_threshold,
+            risk_state=risk_state,
+            model_ts=self._last_model_load,
+        )
 
     def _log_rejection(self, pair, side, reason, current_time,
                        features=None, rate=None, edge_score=None):
@@ -1111,61 +787,25 @@ class AdaptiveMLStrategy(IStrategy):
         )
 
     def _snap_features(self, row):
-        """Extract feature snapshot from a dataframe row."""
-        snap_keys = [
-            "adx", "atr_norm", "ema_slope", "bb_width",
-            "vol_ratio", "rsi", "macd_hist", "direction_score",
-            "regime", "sub_regime", "trend_1h", "rsi_15m",
-            "volume", "volume_sma",
-        ]
-        snap = {}
-        for k in snap_keys:
-            v = row.get(k)
-            if v is not None and not (
-                isinstance(v, float) and np.isnan(v)
-            ):
-                snap[k] = (
-                    round(float(v), 4)
-                    if isinstance(v, (float, np.floating))
-                    else int(v)
-                )
-        return snap
+        """Extract feature snapshot — delegates to discipline_engine."""
+        return snap_features(row)
 
     def _log_trade_entry(self, pair, side, entry_tag, regime,
                          rate, current_time, features_row,
                          shadow=None):
-        """
-        Trade Replay — log accepted entry with full context.
-        Captures: features, risk state, model version, regime params.
-        Optional shadow dict logs candidate model's decision.
-        """
+        """Trade Replay entry — delegates to discipline_engine."""
         params = self._get_regime_params(regime)
-        entry = {
-            "event": "entry",
-            "time": str(current_time),
-            "pair": pair,
-            "side": side,
-            "entry_tag": entry_tag,
-            "rate": round(float(rate), 8),
-            "regime": regime,
-            "features": self._snap_features(features_row),
-            "risk": {
-                "consecutive_losses": self._consecutive_losses,
-                "daily_pnl": round(self._daily_pnl, 6),
-                "daily_trades": self._daily_trades,
-            },
-            "params": {
-                "c": params.get("c"),
-                "e": params.get("e"),
-                "sl": params.get("sl"),
-                "kelly_fraction": params.get("kelly_fraction"),
-            },
-            "model_ts": self._last_model_load,
+        risk_state = {
+            "consecutive_losses": self._consecutive_losses,
+            "daily_pnl": round(self._daily_pnl, 6),
+            "daily_trades": self._daily_trades,
         }
-        if shadow is not None:
-            entry["shadow"] = shadow
-        self._trade_replay.append(entry)
-        self._persist_replay()
+        self._trade_replay = log_trade_entry(
+            pair, side, entry_tag, regime, rate, current_time,
+            features_row, params, risk_state, self._last_model_load,
+            self._trade_replay, TRADE_REPLAY_PATH, self._MAX_REPLAY,
+            shadow=shadow,
+        )
 
     def _evaluate_shadow(self, current_time, side, regime, kwargs):
         """
@@ -1209,57 +849,19 @@ class AdaptiveMLStrategy(IStrategy):
 
     def _log_trade_exit(self, pair, trade, exit_reason, profit,
                         rate, current_time):
-        """
-        Trade Replay — log exit with PnL attribution.
-        Captures: exit cause, profit, duration, entry tag.
-        """
-        try:
-            duration = (
-                current_time - trade.open_date_utc
-            ).total_seconds() / 60
-        except Exception:
-            duration = 0
-
-        # Get current features for exit-time context
-        features = {}
-        try:
-            df, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
-            if df is not None and len(df) > 0:
-                features = self._snap_features(df.iloc[-1])
-        except Exception:
-            pass
-
-        entry = {
-            "event": "exit",
-            "time": str(current_time),
-            "pair": pair,
-            "side": "short" if trade.is_short else "long",
-            "exit_reason": exit_reason,
-            "profit_ratio": round(float(profit), 6),
-            "entry_rate": round(float(trade.open_rate), 8),
-            "exit_rate": round(float(rate), 8),
-            "duration_min": round(duration, 1),
-            "entry_tag": trade.enter_tag,
-            "features_at_exit": features,
-            "risk": {
-                "consecutive_losses": self._consecutive_losses,
-                "daily_pnl": round(self._daily_pnl, 6),
-            },
+        """Trade Replay exit — delegates to discipline_engine."""
+        risk_state = {
+            "consecutive_losses": self._consecutive_losses,
+            "daily_pnl": round(self._daily_pnl, 6),
         }
-        self._trade_replay.append(entry)
-        self._persist_replay()
+        self._trade_replay = log_trade_exit(
+            pair, trade, exit_reason, profit, rate, current_time,
+            self.dp, self.timeframe,
+            self._trade_replay, TRADE_REPLAY_PATH, self._MAX_REPLAY,
+            risk_state=risk_state,
+        )
 
-    def _persist_replay(self):
-        """Persist trade replay log to disk (last N entries)."""
-        if len(self._trade_replay) > self._MAX_REPLAY:
-            self._trade_replay = self._trade_replay[
-                -self._MAX_REPLAY:
-            ]
-        try:
-            with open(TRADE_REPLAY_PATH, "w") as f:
-                json.dump(self._trade_replay[-100:], f, indent=1)
-        except Exception:
-            pass
+    # _persist_replay removed — now handled by discipline_engine
 
     def confirm_trade_entry(
         self,

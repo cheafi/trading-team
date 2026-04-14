@@ -584,6 +584,267 @@ class TestCorrelationGroups:
         assert expected == all_pairs, f"Missing pairs: {expected - all_pairs}"
 
 
+# ─── Regime Engine Module Tests ─────────────────────────────────
+
+class TestRegimeEngine:
+    """Test the extracted regime_engine module directly."""
+
+    def test_detect_regime_returns_all_columns(self):
+        """detect_regime should add all expected columns."""
+        from regime_engine import detect_regime
+        df = make_ohlcv(300)
+        result = detect_regime(df, lookback=50)
+        expected_cols = [
+            "regime", "sub_regime", "adx", "atr_norm",
+            "ema_slope", "bb_width", "vol_ratio",
+        ]
+        for col in expected_cols:
+            assert col in result.columns, f"Missing column: {col}"
+
+    def test_rule_based_regime_values(self):
+        """rule_based_regime should produce values 0-3."""
+        from regime_engine import detect_regime
+        df = make_ohlcv(300)
+        result = detect_regime(df)
+        unique = set(result["regime"].dropna().unique())
+        assert unique.issubset({0, 1, 2, 3})
+
+    def test_get_regime_params_defaults(self):
+        """get_regime_params returns defaults when no best_params."""
+        from regime_engine import get_regime_params
+        p = get_regime_params(2, best_params=None)
+        assert p["strategy"] == "A52"
+        assert "sl" in p
+        assert "roi_table" in p
+
+    def test_get_regime_params_from_best(self):
+        """get_regime_params uses best_params when provided."""
+        from regime_engine import get_regime_params
+        bp = {"2": {"strategy": "CUSTOM", "c": 0.99, "sl": -0.01}}
+        p = get_regime_params(2, best_params=bp)
+        assert p["strategy"] == "CUSTOM"
+        assert p["c"] == 0.99
+
+    def test_get_current_session_all_hours(self):
+        """get_current_session covers all 24 hours."""
+        from regime_engine import get_current_session
+        sessions = set()
+        for h in range(24):
+            mock_time = MagicMock()
+            mock_time.hour = h
+            sessions.add(get_current_session(mock_time))
+        # Should have at least 3 distinct sessions
+        assert len(sessions) >= 3
+
+    def test_classify_sub_regime_length(self):
+        """Sub-regime array has same length as input."""
+        from regime_engine import detect_regime
+        df = make_ohlcv(300)
+        result = detect_regime(df)
+        assert len(result["sub_regime"]) == 300
+
+
+# ─── Discipline Engine Module Tests ─────────────────────────────
+
+class TestDisciplineEngine:
+    """Test the extracted discipline_engine module directly."""
+
+    def test_save_and_load_discipline_state(self):
+        """State should round-trip through save/load."""
+        from discipline_engine import (
+            save_discipline_state, load_discipline_state,
+        )
+        path = Path(tempfile.mktemp(suffix=".json"))
+        try:
+            state = {
+                "consecutive_losses": 3,
+                "daily_pnl": -0.015,
+                "daily_trades": 7,
+                "recent_results": [0.01, -0.02, 0.005],
+            }
+            save_discipline_state(path, state, max_recent=20)
+            assert path.exists()
+
+            restored = {
+                "consecutive_losses": 0,
+                "daily_pnl": 0.0,
+                "daily_trades": 0,
+                "recent_results": [],
+            }
+            restored = load_discipline_state(path, restored)
+            assert restored["consecutive_losses"] == 3
+            assert restored["daily_trades"] == 7
+            assert len(restored["recent_results"]) == 3
+        finally:
+            if path.exists():
+                path.unlink()
+
+    def test_check_max_drawdown_ok(self):
+        """No halt when equity is healthy."""
+        from discipline_engine import check_max_drawdown
+        # Peak at 1.0, current at 0.95 → 5% DD (well below 20%)
+        curve = [0.0, 0.3, 0.5, 0.8, 1.0, 0.95]
+        ks = Path(tempfile.mktemp())
+        result = check_max_drawdown(curve, ks, datetime.utcnow())
+        assert result == "ok"
+        assert not ks.exists()
+
+    def test_check_max_drawdown_halt(self):
+        """Halt when drawdown exceeds threshold."""
+        from discipline_engine import check_max_drawdown
+        # Peak at 1.0, current at 0.7 → 30% DD
+        curve = [0.0, 0.5, 1.0, 0.9, 0.7]
+        ks = Path(tempfile.mktemp())
+        try:
+            result = check_max_drawdown(
+                curve, ks, datetime.utcnow(),
+                max_dd_halt=0.20,
+            )
+            assert result == "halt"
+            assert ks.exists()
+        finally:
+            if ks.exists():
+                ks.unlink()
+
+    def test_check_max_drawdown_warn(self):
+        """Warning when DD is between warn and halt."""
+        from discipline_engine import check_max_drawdown
+        # Peak at 1.0, current at 0.83 → 17% DD
+        curve = [0.0, 0.5, 1.0, 0.9, 0.83]
+        ks = Path(tempfile.mktemp())
+        result = check_max_drawdown(
+            curve, ks, datetime.utcnow(),
+            max_dd_halt=0.20, max_dd_warn=0.15,
+        )
+        assert result == "warn"
+        assert not ks.exists()
+
+    def test_snap_features(self):
+        """snap_features extracts expected keys."""
+        from discipline_engine import snap_features
+        row = {
+            "adx": 25.5, "rsi": 45.2, "regime": 2,
+            "direction_score": -0.35, "volume": 5000.0,
+            "volume_sma": 3000.0, "bb_width": 2.1,
+        }
+        snap = snap_features(row)
+        assert snap["adx"] == 25.5
+        assert snap["regime"] == 2
+        assert snap["direction_score"] == -0.35
+
+    def test_log_decision_writes_jsonl(self):
+        """log_decision should append JSONL entries."""
+        from discipline_engine import log_decision
+        journal = Path(tempfile.mktemp(suffix=".jsonl"))
+        rejection = Path(tempfile.mktemp(suffix=".json"))
+        try:
+            log_decision(
+                "ETH/USDT:USDT", "short", "reject", "test_reason",
+                datetime.utcnow(), journal, rejection,
+                rejection_log=[], max_rejections=100,
+            )
+            assert journal.exists()
+            with open(journal) as f:
+                lines = f.readlines()
+            assert len(lines) == 1
+            entry = json.loads(lines[0])
+            assert entry["decision"] == "reject"
+            assert entry["pair"] == "ETH/USDT:USDT"
+        finally:
+            if journal.exists():
+                journal.unlink()
+            if rejection.exists():
+                rejection.unlink()
+
+    def test_check_correlation_no_freqtrade(self):
+        """Correlation check fails open without freqtrade."""
+        from discipline_engine import check_correlation_exposure
+        groups = {
+            "layer1": ["ETH/USDT:USDT", "BTC/USDT:USDT"],
+        }
+        # Should fail open (return True) when Trade import fails
+        assert check_correlation_exposure(
+            "ETH/USDT:USDT", "short", groups, 2
+        ) is True
+
+
+# ─── Walk-Forward Validation Tests ──────────────────────────────
+
+class TestWalkForward:
+    """Test the upgraded expanding window walk-forward validation."""
+
+    def _make_trades(self, n=200, base_wr=0.55):
+        """Generate mock trades for WF validation."""
+        rng = np.random.RandomState(42)
+        trades = []
+        for i in range(n):
+            win = rng.random() < base_wr
+            profit = abs(rng.normal(0.003, 0.002)) if win else -abs(rng.normal(0.004, 0.002))
+            trades.append({
+                "open_timestamp": i * 300000,
+                "open_date": f"2025-01-{(i // 10) + 1:02d}",
+                "profit_ratio": profit,
+                "trade_duration": rng.randint(5, 120),
+            })
+        return trades
+
+    def test_expanding_window_method(self):
+        """Walk-forward should use expanding window method."""
+        from ml_analyzer import walk_forward_validate
+        trades = self._make_trades(200)
+        result = walk_forward_validate(trades, n_windows=5)
+        assert result is not None
+        assert result["method"] == "expanding_window"
+
+    def test_fold_details_present(self):
+        """Each fold should have details with train/test sizes."""
+        from ml_analyzer import walk_forward_validate
+        trades = self._make_trades(200)
+        result = walk_forward_validate(trades, n_windows=5)
+        assert "folds" in result
+        assert len(result["folds"]) >= 3
+        for fold in result["folds"]:
+            assert "train_size" in fold
+            assert "test_size" in fold
+            assert fold["train_size"] > 0
+            assert fold["test_size"] > 0
+
+    def test_expanding_train_grows(self):
+        """Training set should grow across folds (expanding window)."""
+        from ml_analyzer import walk_forward_validate
+        trades = self._make_trades(300)
+        result = walk_forward_validate(trades, n_windows=5)
+        assert result is not None
+        sizes = [f["train_size"] for f in result["folds"]]
+        # Each fold's training set should be larger than previous
+        for i in range(1, len(sizes)):
+            assert sizes[i] > sizes[i - 1], (
+                f"Fold {i+1} train ({sizes[i]}) should be > "
+                f"fold {i} train ({sizes[i-1]})"
+            )
+
+    def test_degradation_slope_present(self):
+        """Result should include degradation_slope metric."""
+        from ml_analyzer import walk_forward_validate
+        trades = self._make_trades(200)
+        result = walk_forward_validate(trades, n_windows=5)
+        assert "degradation_slope" in result
+        assert isinstance(result["degradation_slope"], float)
+
+    def test_insufficient_data_returns_none(self):
+        """Too few trades should return None."""
+        from ml_analyzer import walk_forward_validate
+        result = walk_forward_validate(self._make_trades(50), n_windows=5)
+        assert result is None
+
+    def test_robustness_flag(self):
+        """is_robust should be a boolean."""
+        from ml_analyzer import walk_forward_validate
+        trades = self._make_trades(200)
+        result = walk_forward_validate(trades, n_windows=5)
+        assert isinstance(result["is_robust"], bool)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
