@@ -3,11 +3,13 @@
 import { useProfit } from "@/lib/hooks";
 
 export function RiskGauge() {
-  const { data: profit } = useProfit();
+  const { data: profit, isLoading, error } = useProfit();
 
+  const connected = !error && profit !== undefined;
   const dd = (profit?.max_drawdown ?? 0) * 100;
-  const riskLevel =
-    dd > 20
+  const riskLevel = !connected
+    ? "—"
+    : dd > 20
       ? "CRITICAL"
       : dd > 15
         ? "HIGH"
@@ -16,25 +18,26 @@ export function RiskGauge() {
           : "LOW";
 
   const riskColor =
-    riskLevel === "CRITICAL"
-      ? "text-red-400"
-      : riskLevel === "HIGH"
-        ? "text-orange-400"
-        : riskLevel === "MEDIUM"
-          ? "text-yellow-400"
-          : "text-emerald-400";
+    riskLevel === "—"
+      ? "text-slate-500"
+      : riskLevel === "CRITICAL"
+        ? "text-red-400"
+        : riskLevel === "HIGH"
+          ? "text-orange-400"
+          : riskLevel === "MEDIUM"
+            ? "text-yellow-400"
+            : "text-emerald-400";
 
   const barColor =
-    riskLevel === "CRITICAL"
-      ? "bg-red-500"
-      : riskLevel === "HIGH"
-        ? "bg-orange-500"
-        : riskLevel === "MEDIUM"
-          ? "bg-yellow-500"
-          : "bg-emerald-500";
+    riskLevel === "—" ? "bg-slate-600"
+    : riskLevel === "CRITICAL" ? "bg-red-500"
+    : riskLevel === "HIGH" ? "bg-orange-500"
+    : riskLevel === "MEDIUM" ? "bg-yellow-500"
+    : "bg-emerald-500";
 
   const badgeBg =
-    riskLevel === "CRITICAL" ? "bg-red-500/20"
+    riskLevel === "—" ? "bg-slate-500/20"
+    : riskLevel === "CRITICAL" ? "bg-red-500/20"
     : riskLevel === "HIGH" ? "bg-orange-500/20"
     : riskLevel === "MEDIUM" ? "bg-yellow-500/20"
     : "bg-emerald-500/20";

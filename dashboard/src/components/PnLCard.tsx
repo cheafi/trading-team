@@ -3,9 +3,10 @@
 import { useProfit, useTrades } from "@/lib/hooks";
 
 export function PnLCard() {
-  const { data: profit } = useProfit();
+  const { data: profit, isLoading, error } = useProfit();
   const { data: trades } = useTrades();
 
+  const connected = !error && profit !== undefined;
   const totalProfit = profit?.profit_all_coin ?? 0;
   const totalProfitPct = profit?.profit_all_percent ?? 0;
   const openTrades = Array.isArray(trades) ? trades.length : 0;
@@ -27,13 +28,20 @@ export function PnLCard() {
           💰 損益總覽 P&L
         </h3>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-500">
-            {openTrades} open
-          </span>
-          <span className="text-[10px] text-slate-600">|</span>
-          <span className="text-[10px] text-slate-500">
-            {closedTrades} closed
-          </span>
+          {!connected && (
+            <span className="text-[10px] text-red-400 font-semibold">⚠ {isLoading ? "Loading..." : "Disconnected"}</span>
+          )}
+          {connected && (
+            <>
+              <span className="text-[10px] text-slate-500">
+                {openTrades} open
+              </span>
+              <span className="text-[10px] text-slate-600">|</span>
+              <span className="text-[10px] text-slate-500">
+                {closedTrades} closed
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -41,11 +49,10 @@ export function PnLCard() {
       <div className="mb-3">
         <p
           className={`text-3xl font-bold font-mono ${
-            isPositive ? "text-emerald-400" : "text-red-400"
+            !connected ? "text-slate-600" : isPositive ? "text-emerald-400" : "text-red-400"
           }`}
         >
-          {isPositive ? "+" : ""}
-          {totalProfit.toFixed(2)}
+          {!connected ? "—" : `${isPositive ? "+" : ""}${totalProfit.toFixed(2)}`}
           <span className="text-lg ml-1 opacity-70">USDT</span>
         </p>
         <p

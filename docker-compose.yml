@@ -56,9 +56,9 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-changeme-redis-pw}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme-redis-pw}", "ping"]
       interval: 15s
       timeout: 3s
       retries: 3
@@ -97,12 +97,12 @@ services:
     ports:
       - "${AGENT_PORT:-3001}:3001"
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme-redis-pw}@redis:6379
       - FREQTRADE_API=http://freqtrade:8080
       - FREQTRADE_API_USER=${FREQTRADE_USER:-freqtrader}
       - FREQTRADE_API_PASSWORD=${FREQTRADE_PASS:?Set FREQTRADE_PASS in .env}
       - ML_TRAIN_API_KEY=${ML_TRAIN_API_KEY:-}
-      - ALLOW_OPEN_AUTH=${ALLOW_OPEN_AUTH:-true}
+      - ALLOW_OPEN_AUTH=${ALLOW_OPEN_AUTH:-false}
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - DISCORD_CHANNEL_NAME=${DISCORD_CHANNEL_NAME:-Trading CC}
       - AGENT_PORT=3001
@@ -112,7 +112,7 @@ services:
       - ./scripts:/app/scripts
       - ./shared:/app/shared
       - ./freqtrade/user_data:/freqtrade/user_data
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # SECURITY: read-only; remove when not running backtests via Docker CLI
     depends_on:
       redis:
         condition: service_healthy

@@ -75,6 +75,9 @@ DECISION_JOURNAL_PATH = MODEL_DIR / "decision_journal.jsonl"
 # Trade replay — per-trade entry/exit with full context
 TRADE_REPLAY_PATH = MODEL_DIR / "trade_replay.json"
 
+# Discipline state persistence — survives container restarts
+DISCIPLINE_STATE_PATH = MODEL_DIR / "discipline_state.json"
+
 # Kill-switch: if this file exists, block ALL entries
 KILL_SWITCH_PATH = MODEL_DIR / "kill_switch"
 
@@ -224,6 +227,67 @@ class AdaptiveMLStrategy(IStrategy):
                 self._shadow_model_data = None
         else:
             self._shadow_model_data = None
+
+        # Restore discipline state from disk (survives restarts)
+        self._load_discipline_state()
+
+    def _load_discipline_state(self):
+        """
+        Restore volatile discipline counters from disk.
+        Called on first model load; written on every trade exit.
+        Without this, container restart resets consecutive_losses,
+        daily_pnl, daily_trades — letting the bot trade immediately
+        after a loss streak that should have triggered cooldown.
+        """
+        if not DISCIPLINE_STATE_PATH.exists():
+            return
+        try:
+            with open(DISCIPLINE_STATE_PATH, "r") as f:
+                state = json.load(f)
+            # Only restore if same day (daily counters reset at midnight)
+            saved_date = state.get("date")
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            if saved_date == today:
+                self._consecutive_losses = state.get(
+                    "consecutive_losses", self._consecutive_losses
+                )
+                self._daily_pnl = state.get("daily_pnl", self._daily_pnl)
+                self._daily_trades = state.get("daily_trades", self._daily_trades)
+                self._recent_results = state.get(
+                    "recent_results", self._recent_results
+                )
+                logger.info(
+                    "Discipline state restored: losses=%d pnl=%.4f trades=%d",
+                    self._consecutive_losses,
+                    self._daily_pnl,
+                    self._daily_trades,
+                )
+            else:
+                logger.info(
+                    "Discipline state from %s — new day %s, resetting",
+                    saved_date, today,
+                )
+        except Exception as e:
+            logger.warning("Failed to load discipline state: %s", e)
+
+    def _save_discipline_state(self):
+        """
+        Persist volatile discipline counters to disk.
+        Called after every trade exit and daily counter reset.
+        """
+        try:
+            state = {
+                "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "consecutive_losses": self._consecutive_losses,
+                "daily_pnl": round(self._daily_pnl, 6),
+                "daily_trades": self._daily_trades,
+                "recent_results": [round(r, 6) for r in self._recent_results[-self._MAX_RECENT:]],
+                "saved_at": datetime.utcnow().isoformat(),
+            }
+            with open(DISCIPLINE_STATE_PATH, "w") as f:
+                json.dump(state, f, indent=1)
+        except Exception as e:
+            logger.warning("Failed to save discipline state: %s", e)
 
     # ─── Regime Detection ────────────────────────────────
 
@@ -1087,6 +1151,7 @@ class AdaptiveMLStrategy(IStrategy):
             self._daily_pnl = 0.0
             self._daily_trades = 0
             self._last_trade_date = today
+            self._save_discipline_state()  # persist reset
 
         # Cooldown after consecutive losses
         regime = 2  # default
@@ -1438,5 +1503,8 @@ class AdaptiveMLStrategy(IStrategy):
         self._log_trade_exit(
             pair, trade, exit_reason, profit, rate, current_time,
         )
+
+        # Persist discipline state so it survives container restarts
+        self._save_discipline_state()
 
         return True

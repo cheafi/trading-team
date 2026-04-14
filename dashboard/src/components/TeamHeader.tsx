@@ -7,6 +7,7 @@ export function TeamHeader() {
   const { data: trades } = useTrades();
   const { data: ml } = useMLState();
 
+  const connected = profit !== undefined;
   const totalProfit = profit?.profit_all_coin ?? 0;
   const isPositive = totalProfit >= 0;
   const openCount = Array.isArray(trades) ? trades.length : 0;
@@ -34,14 +35,14 @@ export function TeamHeader() {
       <div className="flex items-center gap-3">
         {/* Live P&L badge */}
         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
-          isPositive
-            ? "bg-emerald-500/10 border-emerald-500/20"
-            : "bg-red-500/10 border-red-500/20"
+          !connected ? "bg-slate-500/10 border-slate-500/20"
+          : isPositive ? "bg-emerald-500/10 border-emerald-500/20"
+          : "bg-red-500/10 border-red-500/20"
         }`}>
           <span className={`text-xs font-mono font-bold ${
-            isPositive ? "text-emerald-400" : "text-red-400"
+            !connected ? "text-slate-500" : isPositive ? "text-emerald-400" : "text-red-400"
           }`}>
-            {isPositive ? "+" : ""}{totalProfit.toFixed(2)} USDT
+            {!connected ? "⚠ Connecting..." : `${isPositive ? "+" : ""}${totalProfit.toFixed(2)} USDT`}
           </span>
         </div>
         {/* Regime badge */}

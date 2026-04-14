@@ -382,6 +382,10 @@
     <a href="https://github.com/cheafi/Trading-bot-CC" class="btn btn-primary">⭐ View on GitHub</a>
     <a href="#quickstart" class="btn btn-secondary">🚀 Quick Start</a>
   </div>
+  <div style="max-width:700px;margin:20px auto 0;padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;text-align:center;">
+    <p style="color:#f87171;font-size:0.8rem;font-weight:600;margin-bottom:4px;">⚠️ NOT FINANCIAL ADVICE</p>
+    <p style="color:#94a3b8;font-size:0.7rem;line-height:1.5;">This software is for educational and research purposes only. It does not constitute investment advice, a solicitation, or a recommendation to trade. Past performance from backtests or paper trading does not guarantee future results. You may lose all of your capital. Provided AS-IS without warranty. Not a registered investment advisor.</p>
+  </div>
 </header>
 
 <!-- Sticky Nav -->
@@ -511,7 +515,7 @@
 
     <h3 style="text-align:center;margin-top:32px;">Regime → Strategy Mapping</h3>
     <p style="text-align:center;color:var(--muted);margin-bottom:16px;">
-      Only R2 (RANGING) short trades are active — proven profitable. R0/R1/R3 disabled after data analysis.
+      Only R2 (RANGING) short trades are active — best risk-adjusted performance in backtests (not validated live). R0/R1/R3 disabled after data analysis.
     </p>
     <div style="overflow-x:auto;">
       <table class="strat-table">
@@ -619,11 +623,11 @@
       <pre><span class="comment"># Health check</span>
 <span class="cmd">curl http://localhost:8080/api/v1/ping</span>
 
-<span class="comment"># Profit summary (creds: freqtrader / SuperSecure123)</span>
-<span class="cmd">curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/profit</span>
+<span class="comment"># Profit summary (use credentials from your .env file)</span>
+<span class="cmd">curl -u $FT_USER:$FT_PASS http://localhost:8080/api/v1/profit</span>
 
 <span class="comment"># Open trades</span>
-<span class="cmd">curl -u freqtrader:SuperSecure123 http://localhost:8080/api/v1/status</span></pre>
+<span class="cmd">curl -u $FT_USER:$FT_PASS http://localhost:8080/api/v1/status</span></pre>
     </div>
     <div class="code-block">
       <h3>7. Tail All Logs</h3>
@@ -850,6 +854,9 @@
   <p style="margin-top:8px;">
     <a href="https://github.com/cheafi/Trading-bot-CC">GitHub</a> ·
     <code>dry_run: true</code> by default · research / paper-trading stage
+  </p>
+  <p style="margin-top:12px;color:#64748b;font-size:0.65rem;max-width:600px;margin-left:auto;margin-right:auto;line-height:1.5;">
+    Not financial advice. Past performance does not guarantee future results. This software is provided for educational and research purposes only, with no warranty of any kind. You may lose all of your capital. Not a registered investment advisor, broker, or fund.
   </p>
 </footer>
 
