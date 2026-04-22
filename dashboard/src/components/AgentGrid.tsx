@@ -4,9 +4,9 @@ import { useAgents } from "@/lib/hooks";
 import { clsx } from "clsx";
 
 export function AgentGrid() {
-  const { data: agents } = useAgents();
+  const { data: agents, isLoading } = useAgents();
 
-  if (!agents || agents.length === 0) {
+  if (isLoading || !agents) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
         {Array.from({ length: 7 }).map((_, i) => (

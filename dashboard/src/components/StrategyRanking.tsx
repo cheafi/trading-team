@@ -1,9 +1,10 @@
 "use client";
 
+import { useMemo } from "react";
 import { useMLHistory, useMLState } from "@/lib/hooks";
 
 export function StrategyRanking() {
-  const { data: history } = useMLHistory();
+  const { data: history, isLoading } = useMLHistory();
   const { data: ml } = useMLState();
 
   // Use the latest training log entry for real strategy metrics
@@ -11,25 +12,33 @@ export function StrategyRanking() {
     history && history.length > 0 ? history[history.length - 1] : null;
   const stratScores = latest?.strategy_scores || {};
 
-  const strategies = Object.entries(stratScores)
-    .map(([name, scores], idx) => ({
-      rank: idx + 1,
-      name: name.replace("Strategy", ""),
-      winRate: scores.win_rate ?? 0,
-      profitFactor: scores.profit_factor ?? 0,
-      sharpe: scores.sharpe ?? 0,
-      score: scores.score ?? 0,
-      totalProfit: scores.total_profit ?? 0,
-    }))
-    .sort((a, b) => b.score - a.score)
-    .map((s, i) => ({ ...s, rank: i + 1 }));
+  const strategies = useMemo(() =>
+    Object.entries(stratScores)
+      .map(([name, scores], idx) => ({
+        rank: idx + 1,
+        name: name.replace("Strategy", ""),
+        winRate: scores.win_rate ?? 0,
+        profitFactor: scores.profit_factor ?? 0,
+        sharpe: scores.sharpe ?? 0,
+        score: scores.score ?? 0,
+        totalProfit: scores.total_profit ?? 0,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .map((s, i) => ({ ...s, rank: i + 1 })),
+    [stratScores]
+  );
 
-  // Active strategy from ML state
-  const activeStrategy = ml?.strategy || "—";
+  // Active strategy from ML state — strip "Strategy" suffix for comparison
+  const activeStrategy = (ml?.strategy || "—").replace("Strategy", "");
 
   return (
     <div className="bg-[#1a2332] rounded-xl border border-slate-800 overflow-hidden">
-      {strategies.length === 0 ? (
+      {isLoading ? (
+        <div className="p-6 animate-pulse">
+          <div className="h-4 bg-slate-700 rounded w-1/3 mb-3" />
+          <div className="h-20 bg-slate-700 rounded" />
+        </div>
+      ) : strategies.length === 0 ? (
         <div className="p-6 text-center text-slate-500 text-sm">
           No ML training data yet. Run ml_optimizer.py to generate.
         </div>

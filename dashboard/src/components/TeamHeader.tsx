@@ -58,7 +58,7 @@ export function TeamHeader() {
           </span>
         </div>
         <div className="text-xs text-slate-500 font-mono">
-          {new Date().toLocaleDateString("en-CA")} UTC
+          {new Date().toISOString().slice(0, 10)} UTC
         </div>
       </div>
     </header>

@@ -28,6 +28,10 @@ RUN npm install --production
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -sf http://localhost:3001/health || exit 1
 
+# Run as non-root
+RUN groupadd -r trading && useradd -r -g trading -d /app trading && chown -R trading:trading /app
+USER trading
+
 EXPOSE 3001
 
 ENTRYPOINT ["tini", "--"]

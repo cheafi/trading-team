@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useTradeHistory } from "@/lib/hooks";
 
 export function TradeHistory() {
@@ -31,18 +32,17 @@ export function TradeHistory() {
   }
 
   // Summary stats
-  const totalPnl = trades.reduce(
-    (s: number, t: any) => s + (t.profit_abs || 0),
-    0,
-  );
-  const wins = trades.filter((t: any) => (t.profit_abs || t.close_profit || 0) > 0).length;
-  const losses = trades.length - wins;
-  const winRate = trades.length > 0 ? ((wins / trades.length) * 100).toFixed(1) : "0.0";
-  const avgDuration = trades.reduce((s: number, t: any) => {
-    if (!t.open_date || !t.close_date) return s;
-    return s + (new Date(t.close_date).getTime() - new Date(t.open_date).getTime());
-  }, 0) / (trades.length || 1);
-  const avgDurMin = Math.round(avgDuration / 60000);
+  const { totalPnl, wins, losses, winRate, avgDurMin } = useMemo(() => {
+    const total = trades.reduce((s: number, t: any) => s + (t.profit_abs || 0), 0);
+    const w = trades.filter((t: any) => (t.profit_abs ?? t.close_profit ?? 0) > 0).length;
+    const l = trades.length - w;
+    const wr = trades.length > 0 ? ((w / trades.length) * 100).toFixed(1) : "0.0";
+    const avgDur = trades.reduce((s: number, t: any) => {
+      if (!t.open_date || !t.close_date) return s;
+      return s + (new Date(t.close_date).getTime() - new Date(t.open_date).getTime());
+    }, 0) / (trades.length || 1);
+    return { totalPnl: total, wins: w, losses: l, winRate: wr, avgDurMin: Math.round(avgDur / 60000) };
+  }, [trades]);
 
   // Exit reason breakdown
   const exitReasons: Record<string, number> = {};

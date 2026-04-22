@@ -165,6 +165,8 @@ def rule_based_regime(df: DataFrame) -> np.ndarray:
 
     # High volatility: ATR_norm > 80th percentile
     # Use expanding (causal) quantile to avoid lookahead
+    if len(df) < 50:
+        return regimes
     atr_p80 = df["atr_norm"].expanding(min_periods=50).quantile(0.8)
     mask_vol = df["atr_norm"] > atr_p80
     regimes[mask_vol] = 3

@@ -6,9 +6,17 @@ export function PairPerformance() {
   const { data: performance } = usePerformance();
   const { data: funding } = useFunding();
 
-  if (!performance || performance.length === 0) {
+  if (!performance) {
     return (
       <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-6 animate-pulse h-48" />
+    );
+  }
+
+  if (performance.length === 0) {
+    return (
+      <div className="bg-[#1a2332] rounded-xl border border-slate-800 p-6 h-48 flex items-center justify-center">
+        <span className="text-xs text-slate-500">No pair data yet — waiting for trades.</span>
+      </div>
     );
   }
 

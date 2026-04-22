@@ -89,8 +89,10 @@ def save_discipline_state(path: Path, state: dict, max_recent: int = 20):
             "recent_results": [round(r, 6) for r in recent],
             "saved_at": datetime.utcnow().isoformat(),
         }
-        with open(path, "w") as f:
+        tmp_path = path.with_suffix(".tmp")
+        with open(tmp_path, "w") as f:
             json.dump(data, f, indent=1)
+        tmp_path.replace(path)  # atomic on POSIX
     except Exception as e:
         logger.warning("Failed to save discipline state: %s", e)
 
