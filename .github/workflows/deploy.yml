@@ -51,6 +51,7 @@ jobs:
             --exclude 'freqtrade/user_data/logs' \
             --exclude 'freqtrade/user_data/ml_models/*.pkl' \
             --exclude 'dashboard' \
+            --exclude '.env' \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             ./ ${{ env.USER }}@${{ env.HOST }}:${{ env.DEPLOY_DIR }}/
 
@@ -58,11 +59,11 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ env.USER }}@${{ env.HOST }} \
-            "cd $DEPLOY_DIR && bash scripts/deploy-remote.sh"
+            'cd /home/ubuntu/trading-team && bash scripts/deploy-remote.sh'
 
       - name: Health check
         run: |
           sleep 15
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ env.USER }}@${{ env.HOST }} \
-            "cd $DEPLOY_DIR && bash scripts/healthcheck.sh"
+            'cd /home/ubuntu/trading-team && bash scripts/healthcheck.sh'
