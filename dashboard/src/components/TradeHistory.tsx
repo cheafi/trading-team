@@ -146,7 +146,7 @@ export function TradeHistory() {
           </thead>
           <tbody>
             {trades.map((t: any, i: number) => {
-              const pnlPct = (t.profit_pct || t.close_profit * 100 || 0);
+              const pnlPct = (t.profit_pct ?? (t.close_profit != null ? t.close_profit * 100 : 0));
               const pnlAbs = t.profit_abs || 0;
               const isWin = pnlAbs > 0;
               const dur =

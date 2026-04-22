@@ -34,7 +34,7 @@ services:
           memory: 64M
     command: >
       redis-server
-      --requirepass ${REDIS_PASSWORD:-changeme}
+      --requirepass ${REDIS_PASSWORD:-changeme-redis-pw}
       --maxmemory 50mb
       --maxmemory-policy allkeys-lru
       --save ""

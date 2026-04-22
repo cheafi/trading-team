@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  HOST: 161.33.138.193
+  HOST: ${{ secrets.OCI_HOST }}
   USER: ubuntu
   DEPLOY_DIR: /home/ubuntu/trading-team
 
@@ -25,7 +25,7 @@ jobs:
           pip install -r requirements-test.txt 2>/dev/null || pip install pytest
 
       - name: Run tests
-        run: pytest tests/ -x -q --tb=short || true
+        run: pytest tests/ -x -q --tb=short
 
   deploy:
     needs: test

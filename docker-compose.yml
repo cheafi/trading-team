@@ -74,6 +74,13 @@ services:
       - AGENT_API_HOST=agent-runner
       - AGENT_API_PORT=3001
       - ML_TRAIN_API_KEY=${ML_TRAIN_API_KEY:-}
+      - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://reelxai.com/v1}
+      - LLM_GEMINI_BASE_URL=${LLM_GEMINI_BASE_URL:-https://reelxai.com/v1beta}
+      - LLM_CLAUDE_MESSAGES_URL=${LLM_CLAUDE_MESSAGES_URL:-https://reelxai.com/v1/messages}
+      - LLM_BALANCE_URL=${LLM_BALANCE_URL:-}
+      - LLM_MODEL_PRIMARY=${LLM_MODEL_PRIMARY:-gpt-5.4}
+      - LLM_MODEL_RESEARCH=${LLM_MODEL_RESEARCH:-gemini-3.1-pro-preview}
+      - LLM_MODEL_FAST=${LLM_MODEL_FAST:-gemini-3.1-flash-lite-preview}
       - TZ=${TZ:-Asia/Hong_Kong}
     depends_on:
       redis:
@@ -102,6 +109,14 @@ services:
       - FREQTRADE_API_USER=${FREQTRADE_USER:-freqtrader}
       - FREQTRADE_API_PASSWORD=${FREQTRADE_PASS:?Set FREQTRADE_PASS in .env}
       - ML_TRAIN_API_KEY=${ML_TRAIN_API_KEY:-}
+      - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://reelxai.com/v1}
+      - LLM_GEMINI_BASE_URL=${LLM_GEMINI_BASE_URL:-https://reelxai.com/v1beta}
+      - LLM_CLAUDE_MESSAGES_URL=${LLM_CLAUDE_MESSAGES_URL:-https://reelxai.com/v1/messages}
+      - LLM_BALANCE_URL=${LLM_BALANCE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL_PRIMARY=${LLM_MODEL_PRIMARY:-gpt-5.4}
+      - LLM_MODEL_RESEARCH=${LLM_MODEL_RESEARCH:-gemini-3.1-pro-preview}
+      - LLM_MODEL_FAST=${LLM_MODEL_FAST:-gemini-3.1-flash-lite-preview}
       - ALLOW_OPEN_AUTH=${ALLOW_OPEN_AUTH:-false}
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - DISCORD_CHANNEL_NAME=${DISCORD_CHANNEL_NAME:-Trading CC}

@@ -86,8 +86,8 @@ class A51Strategy(IStrategy):
             dataframe["volume"], timeperiod=20
         )
         dataframe["volume_ratio"] = (
-            dataframe["volume"] / dataframe["volume_sma"]
-        )
+            dataframe["volume"] / dataframe["volume_sma"].replace(0, np.nan)
+        ).fillna(0)
 
         # ADX for trend strength
         dataframe["adx"] = ta.ADX(dataframe, timeperiod=14)

@@ -250,6 +250,8 @@ export function RiskCockpit() {
                   killSwitch?.active ? undefined : "operator_dashboard",
                 );
                 mutate("/api/kill-switch");
+              } catch (err) {
+                alert(`Kill switch toggle failed: ${err instanceof Error ? err.message : err}`);
               } finally {
                 setToggling(false);
               }

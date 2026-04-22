@@ -43,6 +43,15 @@ cd Trading-bot-CC
 cp .env.example .env    # fill in your keys (optional — dry_run works without)
 chmod +x scripts/*.sh
 
+# Optional: OpenAI-compatible LLM gateway
+# LLM_API_BASE_URL=https://reelxai.com/v1
+# LLM_GEMINI_BASE_URL=https://reelxai.com/v1beta
+# LLM_CLAUDE_MESSAGES_URL=https://reelxai.com/v1/messages
+# LLM_BALANCE_URL=https://query.llmxapi.com
+# LLM_MODEL_PRIMARY=gpt-5.4
+# LLM_MODEL_RESEARCH=gemini-3.1-pro-preview
+# LLM_MODEL_FAST=gemini-3.1-flash-lite-preview
+
 # 2. Start everything
 ./scripts/start.sh
 # — or —

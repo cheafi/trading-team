@@ -33,6 +33,19 @@ const log = pino({
 const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
 const PORT = parseInt(process.env.AGENT_PORT || "3001", 10);
 const TZ = process.env.TZ || "Asia/Hong_Kong";
+const LLM_API_BASE_URL =
+  process.env.LLM_API_BASE_URL || "https://reelxai.com/v1";
+const LLM_GEMINI_BASE_URL =
+  process.env.LLM_GEMINI_BASE_URL || "https://reelxai.com/v1beta";
+const LLM_CLAUDE_MESSAGES_URL =
+  process.env.LLM_CLAUDE_MESSAGES_URL || "https://reelxai.com/v1/messages";
+const LLM_BALANCE_URL = process.env.LLM_BALANCE_URL || "";
+const LLM_API_KEY = process.env.LLM_API_KEY || "";
+const LLM_MODEL_PRIMARY = process.env.LLM_MODEL_PRIMARY || "gpt-5.4";
+const LLM_MODEL_RESEARCH =
+  process.env.LLM_MODEL_RESEARCH || "gemini-3.1-pro-preview";
+const LLM_MODEL_FAST =
+  process.env.LLM_MODEL_FAST || "gemini-3.1-flash-lite-preview";
 
 // ─── Redis ─────────────────────────────────────────────────────
 const redis = new Redis(REDIS_URL, {
@@ -680,6 +693,26 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Runtime LLM config (non-secret)
+    if (url.pathname === "/api/runtime/llm") {
+      res.writeHead(200);
+      res.end(
+        JSON.stringify({
+          baseUrl: LLM_API_BASE_URL,
+          geminiBaseUrl: LLM_GEMINI_BASE_URL,
+          claudeMessagesUrl: LLM_CLAUDE_MESSAGES_URL,
+          balanceUrl: LLM_BALANCE_URL,
+          models: {
+            primary: LLM_MODEL_PRIMARY,
+            research: LLM_MODEL_RESEARCH,
+            fast: LLM_MODEL_FAST,
+          },
+          apiKeyConfigured: Boolean(LLM_API_KEY),
+        }),
+      );
+      return;
+    }
+
     // Get all agents status
     if (url.pathname === "/api/agents") {
       res.writeHead(200);
@@ -1171,9 +1204,9 @@ const server = createServer(async (req, res) => {
           req.on("end", () => resolve(JSON.parse(data)));
         });
         const versionId = body.version_id;
-        if (!versionId) {
+        if (!versionId || !/^[a-zA-Z0-9_\-.]+$/.test(versionId)) {
           res.writeHead(400);
-          res.end(JSON.stringify({ error: "version_id required" }));
+          res.end(JSON.stringify({ error: "version_id required (alphanumeric, hyphens, underscores, dots only)" }));
           return;
         }
         // Delegate to Python model_registry
@@ -1181,7 +1214,7 @@ const server = createServer(async (req, res) => {
         const cmd = `cd /freqtrade/user_data/strategies && python3 -c "
 from model_registry import ModelRegistry
 r = ModelRegistry()
-r.rollback('${versionId.replace(/'/g, "")}')
+r.rollback('${versionId}')
 print('OK')
 "`;
         execSync(cmd, { timeout: 10000 });
@@ -1577,6 +1610,18 @@ async function main() {
   // Start HTTP server
   server.listen(PORT, "0.0.0.0", () => {
     log.info(`🌐 Agent API listening on port ${PORT}`);
+    log.info(
+      {
+        baseUrl: LLM_API_BASE_URL,
+        geminiBaseUrl: LLM_GEMINI_BASE_URL,
+        claudeMessagesUrl: LLM_CLAUDE_MESSAGES_URL,
+        modelPrimary: LLM_MODEL_PRIMARY,
+        modelResearch: LLM_MODEL_RESEARCH,
+        modelFast: LLM_MODEL_FAST,
+        apiKeyConfigured: Boolean(LLM_API_KEY),
+      },
+      "LLM runtime config loaded",
+    );
   });
 }
 

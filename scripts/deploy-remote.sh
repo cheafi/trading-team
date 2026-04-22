@@ -30,16 +30,22 @@ fi
 # ── Ensure shared/ exists (Dockerfile.agents COPY needs it) ──
 mkdir -p shared
 
-# ── Create .env if missing (dry_run=true by default) ──
+# ── Create .env if missing (generate random passwords) ──
 if [ ! -f .env ]; then
-  cat > .env <<'ENVEOF'
+  FT_PASS=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 24)
+  REDIS_PW=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 24)
+  JWT_SECRET=$(openssl rand -base64 32)
+  cat > .env <<ENVEOF
 FREQTRADE_USER=freqtrader
-FREQTRADE_PASS=changeme
-REDIS_PASSWORD=changeme
+FREQTRADE_PASS=${FT_PASS}
+FREQTRADE__API_SERVER__JWT_SECRET_KEY=${JWT_SECRET}
+REDIS_PASSWORD=${REDIS_PW}
 DRY_RUN=true
 ALLOW_OPEN_AUTH=false
 ENVEOF
-  echo "Created default .env — edit secrets before going live!"
+  echo "⚠️  Created .env with random passwords. Save them securely!"
+  echo "   FREQTRADE_PASS=${FT_PASS}"
+  echo "   REDIS_PASSWORD=${REDIS_PW}"
 fi
 
 # OCI Micro (1GB RAM) — skip dashboard, limit memory

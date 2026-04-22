@@ -94,7 +94,7 @@ _original_path_mkdir = Path.mkdir
 def _patched_mkdir(self, *args, **kwargs):
     """Redirect /freqtrade paths to temp dir during tests."""
     if str(self).startswith("/freqtrade"):
-        redirected = Path(_TMPDIR) / str(self).lstrip("/freqtrade/user_data/ml_models")
+        redirected = Path(_TMPDIR) / str(self).removeprefix("/freqtrade/user_data/ml_models")
         redirected.mkdir(parents=True, exist_ok=True)
         return
     return _original_path_mkdir(self, *args, **kwargs)
