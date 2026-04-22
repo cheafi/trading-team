@@ -40,8 +40,11 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy via rsync
+      - name: Fix permissions & deploy
         run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ env.USER }}@${{ env.HOST }} \
+            "sudo chown -R ubuntu:ubuntu /home/ubuntu/trading-team 2>/dev/null || true"
           rsync -azP --delete \
             --exclude '.git' \
             --exclude 'node_modules' \
