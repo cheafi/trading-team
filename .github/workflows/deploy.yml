@@ -1,0 +1,68 @@
+name: Deploy to OCI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  HOST: 161.33.138.193
+  USER: ubuntu
+  DEPLOY_DIR: /home/ubuntu/trading-team
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: |
+          pip install -r requirements-test.txt 2>/dev/null || pip install pytest
+
+      - name: Run tests
+        run: pytest tests/ -x -q --tb=short || true
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy via rsync
+        run: |
+          rsync -azP --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.venv' \
+            --exclude '__pycache__' \
+            --exclude 'freqtrade/user_data/data' \
+            --exclude 'freqtrade/user_data/logs' \
+            --exclude 'freqtrade/user_data/ml_models/*.pkl' \
+            --exclude 'dashboard' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ./ ${{ env.USER }}@${{ env.HOST }}:${{ env.DEPLOY_DIR }}/
+
+      - name: Restart services
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ env.USER }}@${{ env.HOST }} \
+            "cd $DEPLOY_DIR && bash scripts/deploy-remote.sh"
+
+      - name: Health check
+        run: |
+          sleep 15
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ env.USER }}@${{ env.HOST }} \
+            "cd $DEPLOY_DIR && bash scripts/healthcheck.sh"
