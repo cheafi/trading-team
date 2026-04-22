@@ -22,7 +22,7 @@ jobs:
 
       - name: Install test deps
         run: |
-          pip install -r requirements-test.txt 2>/dev/null || pip install pytest
+          pip install pytest numpy pandas ta-lib-bin freqtrade
 
       - name: Run tests
         run: pytest tests/ -x -q --tb=short
