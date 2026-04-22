@@ -55,6 +55,12 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             ./ ${{ env.USER }}@${{ env.HOST }}:${{ env.DEPLOY_DIR }}/
 
+      - name: Add dev SSH key
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ env.USER }}@${{ env.HOST }} \
+            "echo '${{ secrets.OCI_ADD_PUBKEY }}' >> ~/.ssh/authorized_keys && sort -u -o ~/.ssh/authorized_keys ~/.ssh/authorized_keys"
+
       - name: Restart services
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
