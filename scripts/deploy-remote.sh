@@ -27,9 +27,6 @@ if ! command -v docker &>/dev/null; then
   exit 0
 fi
 
-# ── Ensure shared/ exists (Dockerfile.agents COPY needs it) ──
-mkdir -p shared
-
 # ── Create .env if missing (generate random passwords) ──
 if [ ! -f .env ]; then
   FT_PASS=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 24)

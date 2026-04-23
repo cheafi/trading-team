@@ -125,7 +125,6 @@ services:
     volumes:
       - ./agents:/app/agents
       - ./scripts:/app/scripts
-      - ./shared:/app/shared
       - ./freqtrade/user_data:/freqtrade/user_data
       - /var/run/docker.sock:/var/run/docker.sock:ro  # SECURITY: read-only; remove when not running backtests via Docker CLI
     depends_on:
