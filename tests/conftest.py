@@ -1,9 +1,5 @@
 """
-conftest.py — Patch Freqtrade and model paths before strategy import.
-
-This allows tests to run locally (macOS) without Docker or Freqtrade installed.
-The strategy module references /freqtrade/user_data/ml_models at import time,
-which doesn't exist on the host. We redirect all paths to a temp directory.
+conftest.py — Patch Freqtrade paths for local testing without Docker.
 """
 
 import os
@@ -14,16 +10,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# ─── Create temp model dir before anything imports the strategy ──
-_TMPDIR = tempfile.mkdtemp(prefix="cc_test_models_")
-_TMP_MODEL_DIR = Path(_TMPDIR)
+# ─── Temp model dir ─────────────────────────────────────────────
+_TMPDIR = Path(tempfile.mkdtemp(prefix="cc_test_"))
+os.environ["MODEL_DIR"] = str(_TMPDIR)
 
-# Set env var that overrides MODEL_DIR if the strategy reads it
-os.environ["MODEL_DIR"] = _TMPDIR
+# ─── Mock freqtrade ─────────────────────────────────────────────
 
-# ─── Mock freqtrade modules ─────────────────────────────────────
 
-# Create a proper mock IStrategy base class
 class _MockIStrategy:
     INTERFACE_VERSION = 3
     timeframe = "5m"
@@ -55,87 +48,59 @@ class _MockIntParameter:
         return int(self.value)
 
 
-# Build the mock module
-_mock_strategy_module = MagicMock()
-_mock_strategy_module.IStrategy = _MockIStrategy
-_mock_strategy_module.DecimalParameter = _MockDecimalParameter
-_mock_strategy_module.IntParameter = _MockIntParameter
+_mock_ft = MagicMock()
+_mock_ft.IStrategy = _MockIStrategy
+_mock_ft.DecimalParameter = _MockDecimalParameter
+_mock_ft.IntParameter = _MockIntParameter
 
-# Register mocks BEFORE any test file imports
 sys.modules["freqtrade"] = MagicMock()
-sys.modules["freqtrade.strategy"] = _mock_strategy_module
+sys.modules["freqtrade.strategy"] = _mock_ft
 sys.modules["freqtrade.persistence"] = MagicMock()
 
-# ─── Monkey-patch the strategy module's MODEL_DIR ────────────────
-# We must patch at the source before import
+# ─── Import strategies with patched paths ────────────────────────
 STRATEGY_DIR = (
-    Path(__file__).parent.parent
-    / "freqtrade"
-    / "user_data"
-    / "strategies"
+    Path(__file__).resolve().parent.parent / "freqtrade" / "user_data" / "strategies"
 )
 sys.path.insert(0, str(STRATEGY_DIR))
 
-# Pre-import patch: override the Path that would fail
-import importlib
-_strategy_source = STRATEGY_DIR / "AdaptiveMLStrategy.py"
-
-# Read strategy source, replace the hard-coded path
-_original_model_dir_line = 'MODEL_DIR = Path("/freqtrade/user_data/ml_models")'
-_patched_model_dir_line = f'MODEL_DIR = Path("{_TMPDIR}")'
-
-# We do this by setting an environment-based override
-# Actually simpler: just pre-create the directory the strategy wants
-# Since macOS blocks /freqtrade, we need a different approach:
-# patch Path before import
-_original_path_mkdir = Path.mkdir
+# Patch Path.mkdir to redirect /freqtrade → temp
+_orig_mkdir = Path.mkdir
 
 
 def _patched_mkdir(self, *args, **kwargs):
-    """Redirect /freqtrade paths to temp dir during tests."""
     if str(self).startswith("/freqtrade"):
-        redirected = Path(_TMPDIR) / str(self).removeprefix("/freqtrade/user_data/ml_models")
-        redirected.mkdir(parents=True, exist_ok=True)
+        target = _TMPDIR / str(self).removeprefix(
+            "/freqtrade/user_data/ml_models/"
+        ).lstrip("/")
+        target.mkdir(parents=True, exist_ok=True)
         return
-    return _original_path_mkdir(self, *args, **kwargs)
+    return _orig_mkdir(self, *args, **kwargs)
 
 
 Path.mkdir = _patched_mkdir
 
-# Also patch Path("/freqtrade/...").exists() etc by importing and overriding
-import AdaptiveMLStrategy as _strategy_mod
-import regime_engine as _regime_mod
-import discipline_engine as _discipline_mod
-import log_config as _log_config_mod
+import AdaptiveMLStrategy as _strat  # noqa: E402
+import regime_engine  # noqa: E402
+import discipline_engine  # noqa: E402
+import log_config  # noqa: E402
 
-# Now redirect all the path constants to temp
-_strategy_mod.MODEL_DIR = _TMP_MODEL_DIR
-_strategy_mod.BEST_PARAMS_PATH = _TMP_MODEL_DIR / "best_params.json"
-_strategy_mod.QUALITY_MODEL_PATH = _TMP_MODEL_DIR / "quality_model.pkl"
-_strategy_mod.DISCIPLINE_PATH = _TMP_MODEL_DIR / "discipline_params.json"
-_strategy_mod.ANTI_PATTERN_PATH = _TMP_MODEL_DIR / "anti_patterns.json"
-_strategy_mod.SHADOW_DIR = _TMP_MODEL_DIR / "shadow"
-_strategy_mod.SHADOW_MODEL_PATH = _TMP_MODEL_DIR / "shadow" / "quality_model.pkl"
-_strategy_mod.REJECTION_LOG_PATH = _TMP_MODEL_DIR / "rejection_journal.json"
-_strategy_mod.DECISION_JOURNAL_PATH = _TMP_MODEL_DIR / "decision_journal.jsonl"
-_strategy_mod.TRADE_REPLAY_PATH = _TMP_MODEL_DIR / "trade_replay.json"
-_strategy_mod.DISCIPLINE_STATE_PATH = _TMP_MODEL_DIR / "discipline_state.json"
-_strategy_mod.KILL_SWITCH_PATH = _TMP_MODEL_DIR / "kill_switch"
-_strategy_mod.MODEL_HMAC_PATH = _TMP_MODEL_DIR / "model_hmac.json"
+Path.mkdir = _orig_mkdir
 
-# Restore original mkdir
-Path.mkdir = _original_path_mkdir
+# Redirect all path constants to temp
+for attr in dir(_strat):
+    val = getattr(_strat, attr, None)
+    if isinstance(val, Path) and str(val).startswith("/freqtrade"):
+        setattr(_strat, attr, _TMPDIR / val.name)
+
+# Ensure shadow dir exists
+(_TMPDIR / "shadow").mkdir(exist_ok=True)
 
 
 @pytest.fixture(autouse=True)
-def clean_model_dir():
-    """Clean up model dir between tests."""
+def _clean_model_dir():
+    """Remove volatile files between tests."""
     yield
-    # Remove kill switch if created during test
-    ks = _TMP_MODEL_DIR / "kill_switch"
-    if ks.exists():
-        ks.unlink()
-    # Remove HMAC file
-    hmac_f = _TMP_MODEL_DIR / "model_hmac.json"
-    if hmac_f.exists():
-        hmac_f.unlink()
+    for name in ("kill_switch", "model_hmac.json", "discipline_state.json"):
+        f = _TMPDIR / name
+        if f.exists():
+            f.unlink()
